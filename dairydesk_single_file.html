@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DairyDesk — Delivery & Billing Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#997E67;--primary-h:#866E5A;--secondary:#10B981;--wa:#25D366;
+  --dark:#3E342D;--gray:#7A6D63;--lgray:#F7D6B9;--bg:#FFDBBB;--card:#fff;--border:#B09278;
+  --red:#EF4444;--amber:#F59E0B;--blue:#997E67;--sky:#B09278;--navy:#5C4B3E;--purple:#8B5CF6;
+  --radius:14px;--shadow:0 4px 6px -1px rgba(62,52,45,.1),0 2px 4px -1px rgba(62,52,45,.06);
+  --shadow-lg:0 10px 15px -3px rgba(62,52,45,.1);--font:'Plus Jakarta Sans',sans-serif;
+}
+html.dark{
+  --dark:#FFDBBB;--gray:#B09278;--lgray:#5C4B3E;--bg:#2D2621;--card:#3E342D;--border:#4F4339;
+}
+*{font-family:var(--font)}
+body{background:var(--bg);color:var(--dark);min-height:100vh}
+img,canvas{max-width:100%}
+
+/* ── LOGIN ── */
+.login-wrap{min-height:100vh;background:linear-gradient(135deg,var(--navy),var(--primary),var(--sky));display:flex;align-items:center;justify-content:center;padding:1rem}
+.login-card{background:#fff;border-radius:20px;padding:2.5rem;width:min(420px,100%);box-shadow:0 24px 64px rgba(0,0,0,.25);text-align:center}
+.login-logo{font-size:3.5rem;margin-bottom:.5rem}
+.login-title{font-size:1.7rem;font-weight:800;color:var(--primary);margin-bottom:.25rem}
+.login-sub{font-size:.82rem;color:var(--gray);margin-bottom:1.8rem}
+.login-err{background:#FEE2E2;color:#991B1B;border-radius:8px;padding:8px 12px;font-size:.82rem;margin-bottom:.8rem;display:none}
+.login-tip{font-size:.72rem;color:var(--gray);margin-top:.8rem}
+.login-footer{margin-top:1.8rem;font-size:.74rem;color:var(--gray)}
+
+/* ── TOPBAR ── */
+.topbar{height:58px;background:linear-gradient(135deg,var(--navy),var(--primary));color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.hamburger{background:rgba(255,255,255,.15);border:none;color:#fff;width:36px;height:36px;border-radius:8px;font-size:1.1rem;cursor:pointer;display:none}
+.tb-logo{font-size:1.2rem;font-weight:800;flex:1}
+.tb-right{display:flex;align-items:center;gap:10px;font-size:.82rem}
+.theme-toggle{background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:.95rem}
+.logout-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer}
+.logout-btn:hover{background:rgba(255,255,255,.28)}
+
+/* ── SHELL ── */
+.shell-body{display:flex;min-height:calc(100vh - 58px)}
+.sidebar{width:220px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);padding:16px 12px;position:sticky;top:58px;height:calc(100vh - 58px);overflow-y:auto;display:flex;flex-direction:column;justify-content:space-between;transition:.2s}
+.side-nav{display:flex;flex-direction:column;gap:3px}
+.side-link{display:flex;align-items:center;gap:10px;padding:10px 12px;border:none;background:transparent;color:var(--gray);font-weight:700;font-size:.86rem;border-radius:9px;cursor:pointer;text-align:left;width:100%;transition:.15s}
+.side-link:hover{background:var(--lgray);color:var(--dark)}
+.side-link.active{background:var(--primary);color:#fff}
+.side-footer{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
+.price-mini-title{font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px}
+.price-mini{font-size:.76rem;color:var(--gray);padding:3px 0}
+
+.page-area{flex:1;padding:22px;max-width:1400px;overflow-x:hidden}
+.page{display:none;animation:fadeIn .2s ease}
+.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── PAGE HEAD ── */
+.pg-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.pg-title{font-size:1.6rem;font-weight:800;color:var(--dark)}
+.pg-sub{font-size:.84rem;color:var(--gray);margin-top:3px}
+
+/* ── STATS ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.stats-row-sm{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.stat-card{background:var(--card);border-radius:var(--radius);padding:1rem 1.1rem;border:1px solid var(--border);box-shadow:var(--shadow)}
+.stat-icon{font-size:1.3rem;margin-bottom:6px}
+.stat-v{font-size:1.5rem;font-weight:800;color:var(--primary);line-height:1}
+.stat-l{font-size:.68rem;color:var(--gray);margin-top:.3rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.stat-card.green .stat-v{color:var(--secondary)}
+.stat-card.red .stat-v{color:var(--red)}
+.stat-card.amber .stat-v{color:var(--amber)}
+.stat-card.purple .stat-v{color:var(--purple)}
+.stat-card.blue .stat-v{color:var(--blue)}
+
+/* ── CARD ── */
+.card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow)}
+.card-head{padding:14px 18px;border-bottom:1px solid var(--border)}
+.card-head h3{font-size:.95rem;font-weight:800;color:var(--dark)}
+.card-body{padding:16px 18px}
+.dash-charts-row{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:9px;font-size:.85rem;font-weight:700;cursor:pointer;border:none;transition:.2s;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-h);transform:translateY(-1px)}
+.btn-ghost{background:var(--lgray);border:1px solid var(--border);color:var(--dark)}
+.btn-ghost:hover{background:var(--border)}
+.btn-red{background:var(--red);color:#fff}
+.btn-red:hover{opacity:.9}
+.btn-sm{padding:6px 12px;font-size:.78rem}
+.btn-lg{padding:12px 20px;font-size:.92rem}
+.btn-icon{padding:6px 9px;border-radius:7px;border:1px solid var(--border);background:var(--lgray);cursor:pointer;font-size:.82rem}
+
+/* ── FORM ── */
+.fg{margin-bottom:12px}
+.fg label{display:block;font-size:.76rem;font-weight:700;color:var(--gray);margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em}
+.fg input,.fg select,.fg textarea{width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.9rem;outline:none;background:var(--card);color:var(--dark);font-family:var(--font)}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--primary)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── FILTER BAR ── */
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.filter-bar select,.filter-bar input[type=date]{padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.84rem;outline:none;background:var(--card);color:var(--dark)}
+.search-input{padding:9px 13px;border:1.5px solid var(--border);border-radius:8px;font-size:.86rem;outline:none;background:var(--card);color:var(--dark);max-width:260px;flex:1}
+
+/* ── TABLE ── */
+.table-wrap{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:.86rem}
+.data-table th{background:var(--lgray);color:var(--gray);padding:10px 14px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;font-weight:800;white-space:nowrap}
+.data-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--dark);white-space:nowrap}
+.data-table tr:hover td{background:var(--lgray)}
+.data-table tr:last-child td{border-bottom:none}
+.pagination{display:flex;gap:6px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.page-btn{padding:6px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--dark);cursor:pointer;font-size:.82rem;font-weight:700}
+.page-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+/* ── BADGES ── */
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700}
+.badge-green{background:#D1FAE5;color:#065F46}
+.badge-red{background:#FEE2E2;color:#991B1B}
+.badge-blue{background:#F7D6B9;color:#5C4B3E}
+.badge-amber{background:#FEF3C7;color:#92400E}
+.badge-purple{background:#EDE9FE;color:#6D28D9}
+
+/* ── MODAL ── */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.open{display:flex}
+.modal{background:var(--card);border-radius:16px;padding:26px;width:min(560px,97vw);max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg);position:relative}
+.modal-close{position:absolute;top:16px;right:16px;background:var(--lgray);border:none;width:30px;height:30px;border-radius:50%;font-weight:800;cursor:pointer;color:var(--gray)}
+.modal h2{font-size:1.25rem;font-weight:800;color:var(--dark);margin-bottom:16px}
+
+/* ── DELIVERY PRODUCT ROWS ── */
+.prod-rows{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
+.prod-row{display:grid;grid-template-columns:1.3fr .8fr auto auto;gap:8px;align-items:center;background:var(--lgray);border-radius:9px;padding:9px 11px}
+.prod-row select,.prod-row input{padding:7px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:.84rem;outline:none;background:var(--card);color:var(--dark)}
+.prod-row .row-amt{font-weight:800;color:var(--primary);font-size:.86rem;text-align:right;min-width:60px}
+.prod-row .row-del{background:var(--red);color:#fff;border:none;width:26px;height:26px;border-radius:6px;cursor:pointer;font-weight:800}
+.delivery-total-bar{display:flex;justify-content:space-between;align-items:center;background:var(--lgray);border-radius:9px;padding:12px 16px;margin-top:10px;font-weight:700;color:var(--dark)}
+.delivery-total-bar strong{font-size:1.2rem;color:var(--primary)}
+
+/* ── BILLING ── */
+.bill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.bill-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow);padding:16px}
+.bill-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.bill-cust-name{font-weight:800;color:var(--dark);font-size:.95rem}
+.bill-cust-meta{font-size:.74rem;color:var(--gray);margin-top:2px}
+.bill-total{font-size:1.2rem;font-weight:800;color:var(--primary)}
+.bill-rows{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:.8rem}
+.bill-row{display:flex;justify-content:space-between;color:var(--gray)}
+.bill-row strong{color:var(--dark)}
+
+/* ── TOAST ── */
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--dark);color:#fff;padding:11px 18px;border-radius:10px;font-weight:700;font-size:.85rem;box-shadow:var(--shadow-lg);animation:slideIn .25s ease;max-width:300px}
+.toast.ok{background:var(--secondary)}
+.toast.err{background:var(--red)}
+@keyframes slideIn{from{transform:translateX(110px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:40px 16px;color:var(--gray)}
+.empty .icon{font-size:2.4rem;display:block;opacity:.3;margin-bottom:8px}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .hamburger{display:inline-flex;align-items:center;justify-content:center}
+  .sidebar{position:fixed;left:0;top:58px;z-index:150;transform:translateX(-100%);box-shadow:var(--shadow-lg)}
+  .sidebar.open{transform:translateX(0)}
+  .dash-charts-row{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .frow{grid-template-columns:1fr}
+  .stats-grid,.stats-row-sm{grid-template-columns:1fr 1fr}
+  .page-area{padding:14px}
+  .prod-row{grid-template-columns:1fr;gap:6px}
+}
+
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ LOGIN ════════════════════ -->
+<div id="loginWrap" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🐄</div>
+    <h1 class="login-title">DairyDesk</h1>
+    <p class="login-sub">Delivery, Billing &amp; Analytics for Dairy Businesses</p>
+    <div class="fg"><label>Username</label>
+      <input id="loginU" value="admin" placeholder="Username" oninput="document.getElementById('loginErr').style.display='none'">
+    </div>
+    <div class="fg"><label>Password</label>
+      <input id="loginP" type="password" value="dairy123" placeholder="Password"
+        oninput="document.getElementById('loginErr').style.display='none'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="loginErr" class="login-err">❌ Wrong credentials. Try: admin / dairy123</div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:.5rem" onclick="doLogin()">🔓 Login to Dashboard</button>
+    <p class="login-tip">Username: <strong>admin</strong> &nbsp;|&nbsp; Password: <strong>dairy123</strong></p>
+    <div class="login-footer">🐄 DairyDesk — Admin Console</div>
+  </div>
+</div>
+
+<!-- ════════════════════ APP SHELL ════════════════════ -->
+<div id="appShell" style="display:none">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="tb-logo">🐄 DairyDesk</div>
+    <div class="tb-right">
+      <button class="theme-toggle" onclick="toggleDarkMode()" id="themeBtn">🌙</button>
+      <span id="navUser">👤 Admin</span>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+
+  <div class="shell-body">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="side-nav">
+        <button class="side-link active" data-page="dashboard" onclick="goPage('dashboard')">📊 <span>Dashboard</span></button>
+        <button class="side-link" data-page="customers" onclick="goPage('customers')">👥 <span>Customers</span></button>
+        <button class="side-link" data-page="deliveries" onclick="goPage('deliveries')">🛵 <span>Deliveries</span></button>
+        <button class="side-link" data-page="billing" onclick="goPage('billing')">💰 <span>Billing</span></button>
+        <button class="side-link" data-page="reports" onclick="goPage('reports')">📈 <span>Reports</span></button>
+        <button class="side-link" data-page="analytics" onclick="goPage('analytics')">📉 <span>Analytics</span></button>
+        <button class="side-link" data-page="settings" onclick="goPage('settings')">⚙️ <span>Settings</span></button>
+      </nav>
+      <div class="side-footer">
+        <div class="price-mini-title">Pricing</div>
+        <div class="price-mini">🥛 Milk ₹50/L</div>
+        <div class="price-mini">🍶 Curd ₹60/500g</div>
+        <div class="price-mini">🥤 Buttermilk ₹30/L</div>
+        <div class="price-mini">✨ Ghee ₹1800/kg</div>
+      </div>
+    </aside>
+
+    <!-- PAGE AREA -->
+    <main class="page-area">
+
+      <!-- ═══ DASHBOARD ═══ -->
+      <section id="page-dashboard" class="page active">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Dashboard</h1><p class="pg-sub" id="dashDateLabel"></p></div>
+        </div>
+        <div class="stats-grid" id="dashStats"></div>
+        <div class="dash-charts-row">
+          <div class="card chart-card">
+            <div class="card-head"><h3>Revenue Trend (14 days)</h3></div>
+            <div class="card-body"><canvas id="chartRevTrend" height="220"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-head"><h3>Today: Morning vs Evening</h3></div>
+            <div class="card-body"><canvas id="chartTodaySlot" height="220"></canvas></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-head"><h3>🔔 Recent Activity</h3></div>
+          <div class="card-body" id="activityFeed"></div>
+        </div>
+      </section>
+
+      <!-- ═══ CUSTOMERS ═══ -->
+      <section id="page-customers" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Customers</h1><p class="pg-sub">Manage customer accounts</p></div>
+          <button class="btn btn-primary" onclick="openCustModal()">➕ Add Customer</button>
+        </div>
+        <div class="filter-bar">
+          <input type="text" id="custSearch" class="search-input" placeholder="🔍 Search name or mobile..." oninput="renderCustomersTable()">
+          <select id="custStatusFilter" onchange="renderCustomersTable()">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select id="custPrefFilter" onchange="renderCustomersTable()">
+            <option value="">All Preferences</option>
+            <option value="Morning">Morning</option>
+            <option value="Evening">Evening</option>
+            <option value="Both">Both</option>
+          </select>
+        </div>
+        <div class="table-wrap card">
+          <table class="data-table">
+            <thead><tr>
+              <th>ID</th><th>Name</th><th>Mobile</th><th>Address</th><th>Preference</th><th>Status</th><th>Reg. Date</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="custTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="custPagination"></div>
+      </section>
+
+      <!-- ═══ DELIVERIES ═══ -->
+      <section id="page-deliveries" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Deliveries</h1><p class="pg-sub">Record and track daily deliveries</p></div>
+          <button class="btn btn-primary" onclick="openDeliveryModal()">➕ Add Delivery</button>
+        </div>
+        <div class="filter-bar">
+          <input type="date" id="delFilterFrom" onchange="renderDeliveriesTable()">
+          <span style="color:var(--gray);font-size:.82rem">to</span>
+          <input type="date" id="delFilterTo" onchange="renderDeliveriesTable()">
+          <select id="delFilterSlot" onchange="renderDeliveriesTable()">
+            <option value="">All Slots</option><option value="Morning">Morning</option><option value="Evening">Evening</option>
+          </select>
+          <select id="delFilterProduct" onchange="renderDeliveriesTable()">
+            <option value="">All Products</option><option value="Milk">Milk</option><option value="Curd">Curd</option><option value="Buttermilk">Buttermilk</option><option value="Ghee">Ghee</option>
+          </select>
+          <input type="text" id="delFilterCust" class="search-input" placeholder="🔍 Customer name..." oninput="renderDeliveriesTable()" style="max-width:200px">
+          <button class="btn btn-ghost" onclick="clearDeliveryFilters()">Clear</button>
+        </div>
+        <div class="stats-row-sm" id="delQuickStats"></div>
+        <div class="table-wrap card">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Amount</th><th>Actions</th></tr></thead>
+            <tbody id="delTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="delPagination"></div>
+      </section>
+
+      <!-- ═══ BILLING ═══ -->
+      <section id="page-billing" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Billing</h1><p class="pg-sub">Generate monthly bills per customer</p></div>
+          <div style="display:flex;gap:8px">
+            <select id="billMonth"></select>
+            <button class="btn btn-primary" onclick="generateAllBills()">⚡ Generate All Bills</button>
+          </div>
+        </div>
+        <div class="stats-row-sm" id="billStats"></div>
+        <div class="bill-grid" id="billGrid"></div>
+      </section>
+
+      <!-- ═══ REPORTS ═══ -->
+      <section id="page-reports" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Reports</h1><p class="pg-sub">Business reports with export options</p></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="exportReportExcel()">📥 Excel</button>
+            <button class="btn btn-ghost" onclick="exportReportPDF()">📄 PDF</button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <select id="reportType" onchange="renderReportContent()">
+            <option value="daily">Daily Delivery Report</option>
+            <option value="weekly">Weekly Report</option>
+            <option value="monthly">Monthly Report</option>
+            <option value="revenue">Revenue Report</option>
+            <option value="product">Product-wise Consumption</option>
+            <option value="buyers">Total / New Buyers</option>
+          </select>
+          <input type="date" id="reportDate" onchange="renderReportContent()">
+        </div>
+        <div class="card"><div class="card-body" id="reportContent"></div></div>
+      </section>
+
+      <!-- ═══ ANALYTICS ═══ -->
+      <section id="page-analytics" class="page">
+        <div class="pg-head"><div><h1 class="pg-title">Analytics</h1><p class="pg-sub">Visual insights into your dairy business</p></div></div>
+        <div class="analytics-grid">
+          <div class="card chart-card"><div class="card-head"><h3>Customer Growth</h3></div><div class="card-body"><canvas id="chartCustGrowth" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Daily Sales (30 days)</h3></div><div class="card-body"><canvas id="chartDailySales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Monthly Sales</h3></div><div class="card-body"><canvas id="chartMonthlySales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Product-wise Sales</h3></div><div class="card-body"><canvas id="chartProductSales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Morning vs Evening</h3></div><div class="card-body"><canvas id="chartSlotSplit" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Revenue Trend</h3></div><div class="card-body"><canvas id="chartRevTrend2" height="240"></canvas></div></div>
+        </div>
+      </section>
+
+      <!-- ═══ SETTINGS ═══ -->
+      <section id="page-settings" class="page">
+        <div class="pg-head"><div><h1 class="pg-title">Settings</h1><p class="pg-sub">Pricing, appearance &amp; data</p></div></div>
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-head"><h3>💰 Product Pricing</h3></div>
+            <div class="card-body" id="pricingSettings"></div>
+          </div>
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-head" style="display:flex;justify-content:space-between;align-items:center">
+              <h3>📦 Manage Products</h3>
+              <button class="btn btn-primary btn-sm" onclick="openAddProductModal()">＋ Add New Product</button>
+            </div>
+            <div class="card-body">
+              <p style="font-size:.78rem;color:var(--gray);margin-bottom:14px">Add, edit or remove products. New products will appear in the delivery form and all reports automatically.</p>
+              <div class="table-wrap">
+                <table class="data-table" id="productsTable">
+                  <thead><tr><th>Icon</th><th>Product Name</th><th>Unit</th><th>Price (₹)</th><th>Step</th><th>Note</th><th>Actions</th></tr></thead>
+                  <tbody id="productsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🎨 Appearance</h3></div>
+            <div class="card-body">
+              <div class="fg"><label>Theme</label>
+                <select id="settingsTheme" onchange="setTheme(this.value)">
+                  <option value="light">Light</option><option value="dark">Dark</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🗄️ Data Management</h3></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn btn-ghost" onclick="exportFullBackup()">⬇️ Export Full Backup (JSON)</button>
+              <button class="btn btn-red" onclick="resetAllData()">🗑️ Reset All Data (Reseed Demo)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ════════════════════ MODALS ════════════════════ -->
+
+<!-- ADD/EDIT PRODUCT -->
+<div class="modal-bg" id="productModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('productModal')">✕</button>
+    <h2 id="productModalTitle">Add New Product</h2>
+    <div class="frow">
+      <div class="fg">
+        <label>Product Name *</label>
+        <input type="text" id="pm-name" placeholder="e.g. Paneer">
+      </div>
+      <div class="fg">
+        <label>Icon (emoji) *</label>
+        <input type="text" id="pm-icon" placeholder="e.g. 🧀" maxlength="4" style="font-size:1.4rem">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label>Unit *</label>
+        <select id="pm-unit">
+          <option value="L">L (Litre)</option>
+          <option value="kg">kg (Kilogram)</option>
+          <option value="unit">unit (piece/pack)</option>
+          <option value="g">g (Gram)</option>
+          <option value="ml">ml (Millilitre)</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Price per unit (₹) *</label>
+        <input type="number" id="pm-price" placeholder="e.g. 300" min="0" step="0.5">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fg">
+        <label>Qty Step (min increment)</label>
+        <input type="number" id="pm-step" placeholder="e.g. 0.5" min="0.01" step="0.01" value="0.5">
+      </div>
+      <div class="fg">
+        <label>Note (optional)</label>
+        <input type="text" id="pm-note" placeholder="e.g. 200g per unit">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('productModal')">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveProduct()">💾 Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT CUSTOMER -->
+<div class="modal-bg" id="custModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('custModal')">✕</button>
+    <h2 id="custModalTitle">Add New Customer</h2>
+    <div class="frow">
+      <div class="fg"><label>Full Name *</label><input id="c-name" placeholder="e.g. Laxman ji"></div>
+      <div class="fg"><label>Mobile Number *</label><input type="tel" id="c-mobile" placeholder="10-digit number"></div>
+    </div>
+    <div class="fg"><label>Address</label><textarea id="c-addr" rows="2" placeholder="Full address..."></textarea></div>
+    <div class="frow">
+      <div class="fg"><label>Delivery Preference</label>
+        <select id="c-pref"><option>Morning</option><option>Evening</option><option>Both</option></select>
+      </div>
+      <div class="fg"><label>Status</label>
+        <select id="c-status"><option value="active">Active</option><option value="inactive">Inactive</option></select>
+      </div>
+    </div>
+    <div class="fg"><label>Registration Date</label><input type="date" id="c-regdate"></div>
+    <div class="fg"><label>Notes</label><textarea id="c-notes" rows="2" placeholder="Any notes about this customer..."></textarea></div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="saveCustomer()">💾 Save Customer</button>
+  </div>
+</div>
+
+<!-- VIEW CUSTOMER -->
+<div class="modal-bg" id="viewCustModal">
+  <div class="modal" style="width:min(620px,97vw)">
+    <button class="modal-close" onclick="closeModal('viewCustModal')">✕</button>
+    <div id="viewCustContent"></div>
+  </div>
+</div>
+
+<!-- ADD DELIVERY -->
+<div class="modal-bg" id="deliveryModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('deliveryModal')">✕</button>
+    <h2>Add Delivery</h2>
+    <div class="frow">
+      <div class="fg"><label>Date *</label><input type="date" id="d-date"></div>
+      <div class="fg"><label>Slot *</label><select id="d-slot"><option>Morning</option><option>Evening</option></select></div>
+    </div>
+    <div class="fg"><label>Customer *</label>
+      <select id="d-customer"></select>
+    </div>
+    <div id="d-productRows" class="prod-rows"></div>
+    <button class="btn btn-ghost btn-sm" onclick="addDeliveryProductRow()" style="margin:8px 0">+ Add Product Line</button>
+    <div class="delivery-total-bar">
+      <span>Total Amount</span><strong id="d-totalDisplay">₹0</strong>
+    </div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="saveDelivery()">✅ Record Delivery</button>
+  </div>
+</div>
+
+<!-- BILL VIEW -->
+<div class="modal-bg" id="billModal">
+  <div class="modal" style="width:min(600px,97vw)">
+    <button class="modal-close" onclick="closeModal('billModal')">✕</button>
+    <div id="billModalContent"></div>
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  PRODUCTS & PRICING (single source of truth)
+// ══════════════════════════════════════════════════════
+// Milk: per litre | Curd: per 500g unit | Buttermilk: per litre | Ghee: per kg
+var PRODUCTS = {
+  Milk:       { unit: 'L',    price: 50,   step: 0.5, icon: '🥛' },
+  Curd:       { unit: 'unit', price: 60,   step: 1,   icon: '🍶', note:'500g per unit' },
+  Buttermilk: { unit: 'L',    price: 30,   step: 0.5, icon: '🥤' },
+  Ghee:       { unit: 'kg',   price: 1800, step: 0.25,icon: '✨' },
+};
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function calcAmount(product, qty){
+  return Math.round(PRODUCTS[product].price * qty * 100) / 100;
+}
+
+// ══════════════════════════════════════════════════════
+//  PERSISTENCE
+// ══════════════════════════════════════════════════════
+function lsGet(k, def){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
+function persist(){
+  localStorage.setItem('dd_customers', JSON.stringify(customers));
+  localStorage.setItem('dd_deliveries', JSON.stringify(deliveries));
+  localStorage.setItem('dd_activity', JSON.stringify(activityLog));
+  localStorage.setItem('dd_pricing', JSON.stringify(PRODUCTS));
+  localStorage.setItem('dd_theme', currentTheme);
+}
+function uid(prefix){ return (prefix||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
+function todayStr(){ return new Date().toISOString().split('T')[0]; }
+function fmtDate(d){ if(!d) return ''; var p = d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+function fmtDateLong(d){ var dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
+function money(n){ return '₹' + (Math.round((n||0)*100)/100).toLocaleString('en-IN'); }
+
+var customers   = lsGet('dd_customers', null);
+var deliveries  = lsGet('dd_deliveries', null);
+var activityLog = lsGet('dd_activity', []);
+var currentTheme = lsGet('dd_theme', 'light');
+
+// ══════════════════════════════════════════════════════
+//  SEED DATA — using provided real dataset
+// ══════════════════════════════════════════════════════
+function buildSeedData(){
+  var rawData = [
+    { n:'Vansh',       d:'2026-06-01', q:2,   t:'Morning' },
+    { n:'Kunal',       d:'2026-06-01', q:2.5, t:'Evening' },
+    { n:'Vansh',       d:'2026-06-02', q:2,   t:'Morning' },
+    { n:'Sumit Yash',  d:'2026-06-02', q:2,   t:'Morning' },
+    { n:'Arpan',       d:'2026-06-02', q:1,   t:'Morning' },
+    { n:'Kunal',       d:'2026-06-02', q:2,   t:'Evening' },
+    { n:'Vansh',       d:'2026-06-03', q:2,   t:'Morning' },
+    { n:'Arpan',       d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Rahul',       d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Vishal',      d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Vikku',       d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Kanu',        d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Rahul Vishal',d:'2026-06-03', q:1,   t:'Morning' },
+    { n:'Kunal',       d:'2026-06-03', q:2,   t:'Evening' },
+    { n:'Vansh',       d:'2026-06-04', q:2,   t:'Morning' },
+    { n:'Arpan',       d:'2026-06-04', q:1,   t:'Morning' },
+    { n:'Rahul RC',    d:'2026-06-04', q:1,   t:'Morning' },
+    { n:'Vansh',       d:'2026-06-04', q:0.5, t:'Evening' },
+    { n:'Kunal',       d:'2026-06-04', q:2,   t:'Evening' },
+    { n:'Vishal',      d:'2026-06-04', q:1,   t:'Evening' },
+    { n:'Rahul Bhai',  d:'2026-06-04', q:1,   t:'Evening' },
+    { n:'Kanu',        d:'2026-06-04', q:1,   t:'Evening' },
+    { n:'Vikku',       d:'2026-06-04', q:1,   t:'Evening' },
+    { n:'Vansh',       d:'2026-06-05', q:2,   t:'Morning' },
+    { n:'Arpan',       d:'2026-06-05', q:1,   t:'Evening' },
+    { n:'Vikku',       d:'2026-06-05', q:1,   t:'Evening' },
+    { n:'Vishal',      d:'2026-06-05', q:1,   t:'Evening' },
+    { n:'Kanu',        d:'2026-06-05', q:1,   t:'Evening' },
+    { n:'Rahul',       d:'2026-06-05', q:1,   t:'Evening' },
+    { n:'Kunal',       d:'2026-06-05', q:2,   t:'Evening' }
+  ];
+
+  var uniqueNames = Array.from(new Set(rawData.map(function(r){ return r.n; })));
+  var custs = uniqueNames.map(function(name, i){
+    return {
+      id: 'CUST-' + String(i+1).padStart(3,'0'),
+      name: name,
+      mobile: '9' + (800000000 + Math.floor(Math.random()*99999999)),
+      address: 'Local Area',
+      pref: 'Both',
+      status: 'active',
+      regDate: '2026-06-01',
+      notes: ''
+    };
+  });
+
+  var dels = rawData.map(function(r, i){
+    var c = custs.find(function(cu){ return cu.name === r.n; });
+    return {
+      id: 'DEL-' + (i+1),
+      date: r.d,
+      custId: c.id,
+      custName: c.name,
+      slot: r.t,
+      product: 'Milk',
+      qty: r.q,
+      amount: calcAmount('Milk', r.q)
+    };
+  });
+
+  return { custs: custs, dels: dels };
+}
+
+// Force reseed v3 — wipes old cache, loads corrected dataset, fixes date-aware pages
+var SEED_VERSION = 'v3';
+if(!customers || !deliveries || lsGet('dd_seed_ver','') !== SEED_VERSION){
+  localStorage.removeItem('dd_customers');
+  localStorage.removeItem('dd_deliveries');
+  localStorage.removeItem('dd_activity');
+  var seed = buildSeedData();
+  customers  = seed.custs;
+  deliveries = seed.dels;
+  activityLog = [{ type:'system', msg:'Actual June 2026 data loaded (v3)', time: Date.now() }];
+  localStorage.setItem('dd_seed_ver', JSON.stringify(SEED_VERSION));
+  persist();
+}
+
+function logActivity(type, msg){
+  activityLog.unshift({ type: type, msg: msg, time: Date.now() });
+  if(activityLog.length > 30) activityLog = activityLog.slice(0,30);
+  persist();
+}
+
+
+// ══════════════════════════════════════════════════════
+//  CHARTS — shared instances so we can destroy/recreate on theme change
+// ══════════════════════════════════════════════════════
+var chartInstances = {};
+
+function chartColors(){
+  var dark = currentTheme === 'dark';
+  return {
+    text: dark ? '#FFDBBB' : '#5C4B3E',
+    grid: dark ? '#4F4339' : '#B09278',
+    palette: ['#997E67','#D4A373','#866E5A','#B09278','#5C4B3E','#A98467']
+  };
+}
+
+function makeChart(canvasId, config){
+  var ctx = document.getElementById(canvasId);
+  if(!ctx) return;
+  if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+  chartInstances[canvasId] = new Chart(ctx, config);
+}
+
+function refreshChartsForTheme(){
+  // Re-render whichever page is active so charts redraw with new colors
+  if(document.getElementById('page-dashboard').classList.contains('active')) renderDashCharts();
+  if(document.getElementById('page-analytics').classList.contains('active')) renderAnalytics();
+}
+
+function baseLineOptions(c){
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ color:c.text } } },
+    scales:{
+      x:{ ticks:{ color:c.text }, grid:{ color:c.grid } },
+      y:{ ticks:{ color:c.text }, grid:{ color:c.grid }, beginAtZero:true }
+    }
+  };
+}
+
+// ── DASHBOARD CHARTS ──────────────────────────────────
+function renderDashCharts(){
+  var c = chartColors();
+
+  // Revenue trend - cover the actual data range (earliest to latest data date)
+  var labels = [], revData = [];
+  var earliest = new Date(earliestDataDate() + 'T00:00:00');
+  var latest   = new Date(latestDataDate()   + 'T00:00:00');
+  for(var cur = new Date(earliest); cur <= latest; cur.setDate(cur.getDate() + 1)){
+    var ds = cur.toISOString().split('T')[0];
+    labels.push(cur.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
+    revData.push(sumAmount(deliveriesOn(ds)));
+  }
+  makeChart('chartRevTrend', {
+    type:'line',
+    data:{ labels:labels, datasets:[{ label:'Revenue (₹)', data:revData, borderColor:c.palette[0], backgroundColor:c.palette[0]+'22', tension:.35, fill:true }] },
+    options: baseLineOptions(c)
+  });
+
+  // Latest day morning vs evening
+  var today = latestDataDate();
+  var todayDels = deliveriesOn(today);
+  var mAmt = sumAmount(todayDels.filter(function(d){ return d.slot === 'Morning'; }));
+  var eAmt = sumAmount(todayDels.filter(function(d){ return d.slot === 'Evening'; }));
+  makeChart('chartTodaySlot', {
+    type:'doughnut',
+    data:{ labels:['Morning','Evening'], datasets:[{ data:[mAmt, eAmt], backgroundColor:[c.palette[2], c.palette[4]] }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:c.text } } } }
+  });
+}
+
+// ── ANALYTICS PAGE CHARTS ─────────────────────────────
+function renderAnalytics(){
+  var c = chartColors();
+
+  // Customer growth (cumulative by registration date, last 60 days, weekly buckets)
+  var sortedRegs = customers.slice().sort(function(a,b){ return a.regDate.localeCompare(b.regDate); });
+  var growthLabels = [], growthData = [];
+  var today = new Date();
+  for(var w = 8; w >= 0; w--){
+    var d = new Date(today); d.setDate(d.getDate() - w*7);
+    var ds = d.toISOString().split('T')[0];
+    growthLabels.push(d.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
+    growthData.push(sortedRegs.filter(function(cu){ return cu.regDate <= ds; }).length);
+  }
+  makeChart('chartCustGrowth', {
+    type:'line',
+    data:{ labels:growthLabels, datasets:[{ label:'Total Customers', data:growthData, borderColor:c.palette[1], backgroundColor:c.palette[1]+'22', tension:.3, fill:true }] },
+    options: baseLineOptions(c)
+  });
+
+  // Daily sales - full data range
+  var dsLabels = [], dsData = [];
+  var earlyD = new Date(earliestDataDate() + 'T00:00:00');
+  var lateD  = new Date(latestDataDate()   + 'T00:00:00');
+  for(var cur2 = new Date(earlyD); cur2 <= lateD; cur2.setDate(cur2.getDate() + 1)){
+    var ds2 = cur2.toISOString().split('T')[0];
+    dsLabels.push(cur2.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
+    dsData.push(sumAmount(deliveriesOn(ds2)));
+  }
+  makeChart('chartDailySales', {
+    type:'bar',
+    data:{ labels:dsLabels, datasets:[{ label:'Sales (₹)', data:dsData, backgroundColor:c.palette[0] }] },
+    options: baseLineOptions(c)
+  });
+
+  // Monthly sales - last 4 months
+  var msLabels = [], msData = [];
+  for(var m = 3; m >= 0; m--){
+    var d3 = new Date(); d3.setMonth(d3.getMonth() - m);
+    var ms = d3.getFullYear() + '-' + String(d3.getMonth()+1).padStart(2,'0');
+    msLabels.push(MONTHS[d3.getMonth()].slice(0,3) + ' ' + d3.getFullYear());
+    msData.push(sumAmount(deliveriesInMonth(ms)));
+  }
+  makeChart('chartMonthlySales', {
+    type:'bar',
+    data:{ labels:msLabels, datasets:[{ label:'Revenue (₹)', data:msData, backgroundColor:c.palette[2] }] },
+    options: baseLineOptions(c)
+  });
+
+  // Product-wise sales (all time)
+  var prodLabels = Object.keys(PRODUCTS);
+  var prodData = prodLabels.map(function(p){ return sumAmount(deliveries.filter(function(d){ return d.product === p; })); });
+  makeChart('chartProductSales', {
+    type:'pie',
+    data:{ labels:prodLabels, datasets:[{ data:prodData, backgroundColor:c.palette }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:c.text } } } }
+  });
+
+  // Morning vs evening - all time
+  var allMorning = sumAmount(deliveries.filter(function(d){ return d.slot === 'Morning'; }));
+  var allEvening = sumAmount(deliveries.filter(function(d){ return d.slot === 'Evening'; }));
+  makeChart('chartSlotSplit', {
+    type:'doughnut',
+    data:{ labels:['Morning','Evening'], datasets:[{ data:[allMorning, allEvening], backgroundColor:[c.palette[2], c.palette[4]] }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:c.text } } } }
+  });
+
+  // Revenue trend - full data range (same as dashboard)
+  var rtLabels = [], rtData = [];
+  var earlyR = new Date(earliestDataDate() + 'T00:00:00');
+  var lateR  = new Date(latestDataDate()   + 'T00:00:00');
+  for(var cur3 = new Date(earlyR); cur3 <= lateR; cur3.setDate(cur3.getDate() + 1)){
+    var ds4 = cur3.toISOString().split('T')[0];
+    rtLabels.push(cur3.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
+    rtData.push(sumAmount(deliveriesOn(ds4)));
+  }
+  makeChart('chartRevTrend2', {
+    type:'line',
+    data:{ labels:rtLabels, datasets:[{ label:'Revenue (₹)', data:rtData, borderColor:c.palette[5], backgroundColor:c.palette[5]+'22', tension:.35, fill:true }] },
+    options: baseLineOptions(c)
+  });
+}
+
+
+// ══════════════════════════════════════════════════════
+//  CUSTOMERS MODULE
+// ══════════════════════════════════════════════════════
+var custPage = 1;
+var CUST_PAGE_SIZE = 8;
+var editingCustId = null;
+
+function openCustModal(id){
+  editingCustId = id || null;
+  document.getElementById('custModalTitle').textContent = id ? 'Edit Customer' : 'Add New Customer';
+  if(id){
+    var c = custById(id);
+    document.getElementById('c-name').value = c.name;
+    document.getElementById('c-mobile').value = c.mobile;
+    document.getElementById('c-addr').value = c.address;
+    document.getElementById('c-pref').value = c.pref;
+    document.getElementById('c-status').value = c.status;
+    document.getElementById('c-regdate').value = c.regDate;
+    document.getElementById('c-notes').value = c.notes || '';
+  } else {
+    ['c-name','c-mobile','c-addr','c-notes'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('c-pref').value = 'Morning';
+    document.getElementById('c-status').value = 'active';
+    document.getElementById('c-regdate').value = todayStr();
+  }
+  openModal('custModal');
+}
+
+function saveCustomer(){
+  var name = document.getElementById('c-name').value.trim();
+  var mobile = document.getElementById('c-mobile').value.trim();
+  if(!name || !mobile){ toast('Name and mobile number are required!', 'err'); return; }
+  if(mobile.replace(/\D/g,'').length < 10){ toast('Enter a valid 10-digit mobile number', 'err'); return; }
+
+  var data = {
+    name: name, mobile: mobile,
+    address: document.getElementById('c-addr').value.trim(),
+    pref: document.getElementById('c-pref').value,
+    status: document.getElementById('c-status').value,
+    regDate: document.getElementById('c-regdate').value,
+    notes: document.getElementById('c-notes').value.trim()
+  };
+
+  if(editingCustId){
+    var idx = customers.findIndex(function(c){ return c.id === editingCustId; });
+    customers[idx] = Object.assign(customers[idx], data);
+    toast('Customer updated ✓', 'ok');
+    logActivity('customer', 'Updated customer: ' + name);
+  } else {
+    var maxNum = customers.reduce(function(m,c){ var n = parseInt(c.id.split('-')[1]); return n > m ? n : m; }, 0);
+    var newId = 'CUST-' + String(maxNum+1).padStart(3,'0');
+    customers.push(Object.assign({ id: newId }, data));
+    toast('✅ New customer added: ' + name, 'ok');
+    logActivity('customer', 'New customer added: ' + name);
+  }
+  persist();
+  closeModal('custModal');
+  renderCustomersTable();
+  populateCustomerDropdown();
+}
+
+function toggleCustomerStatus(id){
+  var c = custById(id);
+  if(!c) return;
+  c.status = c.status === 'active' ? 'inactive' : 'active';
+  persist();
+  toast(c.name + ' marked ' + c.status, c.status === 'active' ? 'ok' : '');
+  renderCustomersTable();
+}
+
+function filteredCustomers(){
+  var q = (document.getElementById('custSearch').value || '').toLowerCase();
+  var statusF = document.getElementById('custStatusFilter').value;
+  var prefF = document.getElementById('custPrefFilter').value;
+  return customers.filter(function(c){
+    var matchQ = !q || c.name.toLowerCase().includes(q) || c.mobile.includes(q);
+    var matchStatus = !statusF || c.status === statusF;
+    var matchPref = !prefF || c.pref === prefF;
+    return matchQ && matchStatus && matchPref;
+  });
+}
+
+function renderCustomersTable(){
+  var list = filteredCustomers();
+  var totalPages = Math.max(1, Math.ceil(list.length / CUST_PAGE_SIZE));
+  if(custPage > totalPages) custPage = totalPages;
+  var pageList = list.slice((custPage-1)*CUST_PAGE_SIZE, custPage*CUST_PAGE_SIZE);
+
+  var body = document.getElementById('custTableBody');
+  if(!pageList.length){
+    body.innerHTML = '<tr><td colspan="8"><div class="empty"><span class="icon">👥</span><p>No customers found</p></div></td></tr>';
+  } else {
+    body.innerHTML = pageList.map(function(c){
+      var statusBadge = c.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>';
+      return '<tr>' +
+        '<td>' + c.id + '</td>' +
+        '<td><strong>' + c.name + '</strong></td>' +
+        '<td>' + c.mobile + '</td>' +
+        '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + (c.address||'—') + '</td>' +
+        '<td><span class="badge badge-blue">' + c.pref + '</span></td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td>' + fmtDate(c.regDate) + '</td>' +
+        '<td>' +
+          '<button class="btn-icon" onclick="viewCustomer(\'' + c.id + '\')" title="View">👁️</button> ' +
+          '<button class="btn-icon" onclick="openCustModal(\'' + c.id + '\')" title="Edit">✏️</button> ' +
+          '<button class="btn-icon" onclick="toggleCustomerStatus(\'' + c.id + '\')" title="Toggle Status">' + (c.status==='active'?'🚫':'✅') + '</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  var pag = document.getElementById('custPagination');
+  var pagHtml = '';
+  for(var i = 1; i <= totalPages; i++){
+    pagHtml += '<button class="page-btn ' + (i===custPage?'active':'') + '" onclick="custPage=' + i + ';renderCustomersTable()">' + i + '</button>';
+  }
+  pag.innerHTML = totalPages > 1 ? pagHtml : '';
+}
+
+function viewCustomer(id){
+  var c = custById(id);
+  if(!c) return;
+  var custDels = deliveries.filter(function(d){ return d.custId === id; });
+  var totalDeliveries = custDels.length;
+  var totalAmount = sumAmount(custDels);
+
+  var prodBreak = {};
+  custDels.forEach(function(d){
+    if(!prodBreak[d.product]) prodBreak[d.product] = { qty:0, amount:0 };
+    prodBreak[d.product].qty += d.qty;
+    prodBreak[d.product].amount += d.amount;
+  });
+
+  var rows = Object.keys(prodBreak).map(function(p){
+    var info = PRODUCTS[p];
+    return '<div class="bill-row"><span>' + info.icon + ' ' + p + ' (' + prodBreak[p].qty.toFixed(2) + ' ' + info.unit + ')</span><strong>' + money(prodBreak[p].amount) + '</strong></div>';
+  }).join('') || '<div class="bill-row"><span style="color:var(--gray)">No deliveries yet</span></div>';
+
+  document.getElementById('viewCustContent').innerHTML =
+    '<h2 style="color:var(--primary)">' + c.name + ' <span class="badge badge-blue" style="margin-left:6px">' + c.id + '</span></h2>' +
+    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">📍 ' + (c.address||'—') + '</p>' +
+    '<div class="frow" style="margin-bottom:14px">' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Mobile</div><div style="font-weight:800;margin-top:3px">' + c.mobile + '</div></div>' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Preference</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + c.pref + '</div></div>' +
+    '</div>' +
+    '<div class="frow" style="margin-bottom:14px">' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Deliveries</div><div style="font-weight:800;margin-top:3px">' + totalDeliveries + '</div></div>' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Billed (All-Time)</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + money(totalAmount) + '</div></div>' +
+    '</div>' +
+    (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + c.notes + '</div>' : '') +
+    '<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Product Summary (All-Time)</div>' +
+    '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px">' + rows + '</div>';
+
+  openModal('viewCustModal');
+}
+
+
+// ══════════════════════════════════════════════════════
+//  DELIVERIES MODULE
+// ══════════════════════════════════════════════════════
+var delPage = 1;
+var DEL_PAGE_SIZE = 10;
+var deliveryRowCount = 0;
+
+function populateCustomerDropdown(){
+  var sel = document.getElementById('d-customer');
+  if(!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = activeCustomers().map(function(c){
+    return '<option value="' + c.id + '">' + c.name + ' (' + c.id + ')</option>';
+  }).join('');
+  if(cur) sel.value = cur;
+}
+
+function openDeliveryModal(){
+  document.getElementById('d-date').value = todayStr();
+  document.getElementById('d-slot').value = 'Morning';
+  populateCustomerDropdown();
+  document.getElementById('d-productRows').innerHTML = '';
+  deliveryRowCount = 0;
+  addDeliveryProductRow();
+  openModal('deliveryModal');
+}
+
+function addDeliveryProductRow(){
+  var rid = 'prow_' + (++deliveryRowCount);
+  var div = document.createElement('div');
+  div.className = 'prod-row';
+  div.id = rid;
+  var prodOptions = Object.keys(PRODUCTS).map(function(p){
+    return '<option value="' + p + '">' + PRODUCTS[p].icon + ' ' + p + ' (₹' + PRODUCTS[p].price + '/' + PRODUCTS[p].unit + ')</option>';
+  }).join('');
+  div.innerHTML =
+    '<select class="prow-product" onchange="updateDeliveryTotal()">' + prodOptions + '</select>' +
+    '<input type="number" class="prow-qty" value="1" step="0.5" min="0.5" oninput="updateDeliveryTotal()" placeholder="Qty">' +
+    '<span class="row-amt" id="' + rid + '_amt">₹0</span>' +
+    '<button class="row-del" onclick="document.getElementById(\'' + rid + '\').remove();updateDeliveryTotal()">×</button>';
+  document.getElementById('d-productRows').appendChild(div);
+  updateDeliveryTotal();
+}
+
+function updateDeliveryTotal(){
+  var rows = document.querySelectorAll('#d-productRows .prod-row');
+  var total = 0;
+  rows.forEach(function(row){
+    var product = row.querySelector('.prow-product').value;
+    var qty = parseFloat(row.querySelector('.prow-qty').value) || 0;
+    var amt = calcAmount(product, qty);
+    total += amt;
+    var amtEl = row.querySelector('.row-amt');
+    if(amtEl) amtEl.textContent = money(amt);
+  });
+  document.getElementById('d-totalDisplay').textContent = money(total);
+}
+
+function saveDelivery(){
+  var date = document.getElementById('d-date').value;
+  var slot = document.getElementById('d-slot').value;
+  var custId = document.getElementById('d-customer').value;
+  if(!date || !custId){ toast('Please select date and customer', 'err'); return; }
+
+  var c = custById(custId);
+  var rows = document.querySelectorAll('#d-productRows .prod-row');
+  if(!rows.length){ toast('Add at least one product', 'err'); return; }
+
+  var added = [];
+  rows.forEach(function(row){
+    var product = row.querySelector('.prow-product').value;
+    var qty = parseFloat(row.querySelector('.prow-qty').value) || 0;
+    if(qty <= 0) return;
+    var amount = calcAmount(product, qty);
+    var del = {
+      id: uid('DEL'),
+      date: date, custId: custId, custName: c.name,
+      slot: slot, product: product, qty: qty, amount: amount
+    };
+    deliveries.push(del);
+    added.push(del);
+  });
+
+  if(!added.length){ toast('Enter a valid quantity for at least one product', 'err'); return; }
+
+  persist();
+  closeModal('deliveryModal');
+  var totalAmt = sumAmount(added);
+  toast('✅ Delivery recorded for ' + c.name + ' — ' + money(totalAmt), 'ok');
+  logActivity('delivery', 'Delivery recorded: ' + c.name + ' (' + slot + ') — ' + money(totalAmt));
+  renderDeliveriesTable();
+  if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+}
+
+function deleteDelivery(id){
+  if(!confirm('Delete this delivery record?')) return;
+  deliveries = deliveries.filter(function(d){ return d.id !== id; });
+  persist();
+  toast('Delivery deleted', 'err');
+  renderDeliveriesTable();
+}
+
+function initDeliveryFilters(){
+  if(!document.getElementById('delFilterFrom').value){
+    document.getElementById('delFilterFrom').value = earliestDataDate();
+    document.getElementById('delFilterTo').value = latestDataDate();
+  }
+}
+
+function clearDeliveryFilters(){
+  document.getElementById('delFilterFrom').value = '';
+  document.getElementById('delFilterTo').value = '';
+  document.getElementById('delFilterSlot').value = '';
+  document.getElementById('delFilterProduct').value = '';
+  document.getElementById('delFilterCust').value = '';
+  renderDeliveriesTable();
+}
+
+function filteredDeliveries(){
+  var from = document.getElementById('delFilterFrom').value;
+  var to = document.getElementById('delFilterTo').value;
+  var slot = document.getElementById('delFilterSlot').value;
+  var product = document.getElementById('delFilterProduct').value;
+  var custQ = (document.getElementById('delFilterCust').value || '').toLowerCase();
+
+  return deliveries.filter(function(d){
+    if(from && d.date < from) return false;
+    if(to && d.date > to) return false;
+    if(slot && d.slot !== slot) return false;
+    if(product && d.product !== product) return false;
+    if(custQ && !d.custName.toLowerCase().includes(custQ)) return false;
+    return true;
+  }).sort(function(a,b){ return b.date.localeCompare(a.date); });
+}
+
+function renderDeliveriesTable(){
+  var list = filteredDeliveries();
+
+  document.getElementById('delQuickStats').innerHTML =
+    '<div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Records Found</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(sumAmount(list)) + '</div><div class="stat-l">Total Amount</div></div>' +
+    '<div class="stat-card amber"><div class="stat-v">' + new Set(list.map(function(d){return d.custId;})).size + '</div><div class="stat-l">Unique Customers</div></div>';
+
+  var totalPages = Math.max(1, Math.ceil(list.length / DEL_PAGE_SIZE));
+  if(delPage > totalPages) delPage = totalPages;
+  var pageList = list.slice((delPage-1)*DEL_PAGE_SIZE, delPage*DEL_PAGE_SIZE);
+
+  var body = document.getElementById('delTableBody');
+  if(!pageList.length){
+    body.innerHTML = '<tr><td colspan="7"><div class="empty"><span class="icon">🛵</span><p>No deliveries found for these filters</p></div></td></tr>';
+  } else {
+    body.innerHTML = pageList.map(function(d){
+      var info = PRODUCTS[d.product];
+      var slotBadge = d.slot === 'Morning' ? '<span class="badge badge-amber">☀️ Morning</span>' : '<span class="badge badge-purple">🌙 Evening</span>';
+      return '<tr>' +
+        '<td>' + fmtDate(d.date) + '</td>' +
+        '<td><strong>' + d.custName + '</strong></td>' +
+        '<td>' + slotBadge + '</td>' +
+        '<td>' + info.icon + ' ' + d.product + '</td>' +
+        '<td>' + d.qty + ' ' + info.unit + '</td>' +
+        '<td style="font-weight:800;color:var(--primary)">' + money(d.amount) + '</td>' +
+        '<td><button class="btn-icon" onclick="deleteDelivery(\'' + d.id + '\')" title="Delete">🗑️</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  var pag = document.getElementById('delPagination');
+  var pagHtml = '';
+  for(var i = 1; i <= totalPages; i++){
+    pagHtml += '<button class="page-btn ' + (i===delPage?'active':'') + '" onclick="delPage=' + i + ';renderDeliveriesTable()">' + i + '</button>';
+  }
+  pag.innerHTML = totalPages > 1 ? pagHtml : '';
+}
+
+
+// ══════════════════════════════════════════════════════
+//  BILLING MODULE
+// ══════════════════════════════════════════════════════
+function initBillMonths(){
+  var sel = document.getElementById('billMonth');
+  if(sel.options.length > 1) return;
+  sel.innerHTML = '';
+  var now = new Date();
+  for(var i = 0; i < 12; i++){
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var val = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    var opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+    if(i === 0) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.onchange = renderBillingPage;
+}
+
+function buildCustomerBill(custId, month){
+  var c = custById(custId);
+  var dels = deliveries.filter(function(d){ return d.custId === custId && d.date.startsWith(month); });
+  var prodMap = {};
+  var grandTotal = 0;
+  dels.forEach(function(d){
+    if(!prodMap[d.product]) prodMap[d.product] = { qty:0, amount:0 };
+    prodMap[d.product].qty += d.qty;
+    prodMap[d.product].amount += d.amount;
+    grandTotal += d.amount;
+  });
+  return { customer:c, month:month, deliveries:dels, products:prodMap, grandTotal: Math.round(grandTotal*100)/100 };
+}
+
+function renderBillingPage(){
+  var month = document.getElementById('billMonth').value;
+  if(!month) return;
+
+  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id, month); })
+    .filter(function(b){ return b.deliveries.length > 0; });
+
+  var totalRevenue = bills.reduce(function(s,b){ return s + b.grandTotal; }, 0);
+  document.getElementById('billStats').innerHTML =
+    '<div class="stat-card"><div class="stat-v">' + bills.length + '</div><div class="stat-l">Customers Billed</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(totalRevenue) + '</div><div class="stat-l">Total Revenue</div></div>' +
+    '<div class="stat-card amber"><div class="stat-v">' + (bills.length ? money(totalRevenue/bills.length) : '₹0') + '</div><div class="stat-l">Avg Bill / Customer</div></div>';
+
+  var grid = document.getElementById('billGrid');
+  if(!bills.length){
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="icon">💰</span><p>No deliveries found for ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</p></div>';
+    return;
+  }
+
+  grid.innerHTML = bills.map(function(b){
+    var rows = Object.keys(b.products).map(function(p){
+      var info = PRODUCTS[p];
+      var pr = b.products[p];
+      return '<div class="bill-row"><span>' + info.icon + ' ' + p + ' — ' + pr.qty.toFixed(2) + ' ' + info.unit + ' × ₹' + info.price + '</span><strong>' + money(pr.amount) + '</strong></div>';
+    }).join('');
+    return '<div class="bill-card">' +
+      '<div class="bill-card-top">' +
+        '<div><div class="bill-cust-name">' + b.customer.name + '</div><div class="bill-cust-meta">' + b.customer.id + ' · ' + b.deliveries.length + ' deliveries</div></div>' +
+        '<div class="bill-total">' + money(b.grandTotal) + '</div>' +
+      '</div>' +
+      '<div class="bill-rows">' + rows + '</div>' +
+      '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="openBillModal(\'' + b.customer.id + '\',\'' + month + '\')">📄 View Full Bill</button>' +
+    '</div>';
+  }).join('');
+}
+
+function generateAllBills(){
+  var month = document.getElementById('billMonth').value;
+  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id, month); }).filter(function(b){ return b.deliveries.length > 0; });
+  toast('⚡ Generated ' + bills.length + ' bills for ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0], 'ok');
+  logActivity('bill', 'Generated ' + bills.length + ' monthly bills for ' + month);
+  renderBillingPage();
+}
+
+function openBillModal(custId, month){
+  var b = buildCustomerBill(custId, month);
+  var mn = MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0];
+  var rows = Object.keys(b.products).map(function(p){
+    var info = PRODUCTS[p];
+    var pr = b.products[p];
+    return '<tr><td>' + info.icon + ' ' + p + '</td><td style="text-align:center">' + pr.qty.toFixed(2) + ' ' + info.unit + '</td>' +
+      '<td style="text-align:center">₹' + info.price + '/' + info.unit + '</td><td style="text-align:right;font-weight:800">' + money(pr.amount) + '</td></tr>';
+  }).join('');
+
+  document.getElementById('billModalContent').innerHTML =
+    '<h2 style="color:var(--primary);margin-bottom:4px">Monthly Bill</h2>' +
+    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">' + b.customer.name + ' (' + b.customer.id + ') · ' + mn + '</p>' +
+    '<table class="data-table" style="margin-bottom:14px">' +
+      '<thead><tr><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amount</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+    '<div class="delivery-total-bar"><span>Grand Total</span><strong>' + money(b.grandTotal) + '</strong></div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px">' +
+      '<button class="btn btn-ghost" style="flex:1" onclick="closeModal(\'billModal\')">Close</button>' +
+      '<button class="btn btn-primary" style="flex:1" onclick="downloadBillPDF(\'' + custId + '\',\'' + month + '\')">📄 Download PDF</button>' +
+    '</div>';
+
+  openModal('billModal');
+}
+
+function downloadBillPDF(custId, month){
+  var b = buildCustomerBill(custId, month);
+  var mn = MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0];
+  var doc = new jspdf.jsPDF();
+  doc.setFontSize(18); doc.setTextColor(79,70,229);
+  doc.text('DairyDesk - Monthly Bill', 14, 18);
+  doc.setFontSize(11); doc.setTextColor(60,60,60);
+  doc.text(b.customer.name + ' (' + b.customer.id + ')', 14, 28);
+  doc.text('Period: ' + mn, 14, 35);
+  doc.text('Mobile: ' + b.customer.mobile, 14, 42);
+
+  var y = 54;
+  doc.setFontSize(10); doc.setTextColor(255,255,255);
+  doc.setFillColor(79,70,229);
+  doc.rect(14, y-6, 182, 8, 'F');
+  doc.text('Product', 18, y);
+  doc.text('Qty', 100, y);
+  doc.text('Rate', 130, y);
+  doc.text('Amount', 165, y);
+
+  doc.setTextColor(40,40,40);
+  Object.keys(b.products).forEach(function(p){
+    y += 9;
+    var info = PRODUCTS[p];
+    var pr = b.products[p];
+    doc.text(p, 18, y);
+    doc.text(pr.qty.toFixed(2) + ' ' + info.unit, 100, y);
+    doc.text('Rs.' + info.price, 130, y);
+    doc.text('Rs.' + pr.amount.toFixed(2), 165, y);
+  });
+
+  y += 14;
+  doc.setFontSize(13); doc.setTextColor(79,70,229);
+  doc.text('Grand Total: Rs.' + b.grandTotal.toFixed(2), 14, y);
+
+  doc.save('Bill_' + b.customer.name.replace(/ /g,'_') + '_' + month + '.pdf');
+  toast('PDF downloaded!', 'ok');
+}
+
+
+// ══════════════════════════════════════════════════════
+//  REPORTS MODULE
+// ══════════════════════════════════════════════════════
+function renderReportContent(){
+  var type = document.getElementById('reportType').value;
+  var dateVal = document.getElementById('reportDate').value || todayStr();
+  var el = document.getElementById('reportContent');
+
+  if(type === 'daily')   el.innerHTML = buildDailyReport(dateVal);
+  if(type === 'weekly')  el.innerHTML = buildWeeklyReport(dateVal);
+  if(type === 'monthly') el.innerHTML = buildMonthlyReport(dateVal);
+  if(type === 'revenue') el.innerHTML = buildRevenueReport(dateVal);
+  if(type === 'product') el.innerHTML = buildProductReport();
+  if(type === 'buyers')  el.innerHTML = buildBuyersReport(dateVal);
+}
+
+function reportTableRows(list){
+  return list.map(function(d){
+    var info = PRODUCTS[d.product];
+    return '<tr><td>' + fmtDate(d.date) + '</td><td>' + d.custName + '</td><td>' + d.slot + '</td><td>' + info.icon + ' ' + d.product + '</td><td>' + d.qty + ' ' + info.unit + '</td><td style="font-weight:700">' + money(d.amount) + '</td></tr>';
+  }).join('') || '<tr><td colspan="6"><div class="empty"><span class="icon">📭</span><p>No records</p></div></td></tr>';
+}
+
+function buildDailyReport(date){
+  var list = deliveriesOn(date);
+  return '<h3 style="margin-bottom:10px">Daily Delivery Report — ' + fmtDateLong(date) + '</h3>' +
+    '<div class="stats-row-sm"><div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Deliveries</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(sumAmount(list)) + '</div><div class="stat-l">Revenue</div></div></div>' +
+    '<table class="data-table"><thead><tr><th>Date</th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>' + reportTableRows(list) + '</tbody></table>';
+}
+
+function buildWeeklyReport(date){
+  // Use full data range for the week ending at the given date
+  var end = new Date(date + 'T00:00:00');
+  var start = new Date(date + 'T00:00:00'); start.setDate(start.getDate()-6);
+  // If date is today but data is older, auto-use the actual data range
+  var dataLatest = latestDataDate();
+  var dataEarliest = earliestDataDate();
+  if(date > dataLatest){ end = new Date(dataLatest + 'T00:00:00'); start = new Date(dataEarliest + 'T00:00:00'); }
+  var sStr = start.toISOString().split('T')[0], eStr = end.toISOString().split('T')[0];
+  var list = deliveriesInRange(sStr, eStr);
+  return '<h3 style="margin-bottom:10px">Weekly Report — ' + fmtDateLong(sStr) + ' to ' + fmtDateLong(eStr) + '</h3>' +
+    '<div class="stats-row-sm"><div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Deliveries</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(sumAmount(list)) + '</div><div class="stat-l">Revenue</div></div>' +
+    '<div class="stat-card amber"><div class="stat-v">' + new Set(list.map(function(d){return d.custId;})).size + '</div><div class="stat-l">Unique Buyers</div></div></div>' +
+    '<table class="data-table"><thead><tr><th>Date</th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>' + reportTableRows(list) + '</tbody></table>';
+}
+
+function buildMonthlyReport(date){
+  var month = date.slice(0,7);
+  var list = deliveriesInMonth(month);
+  var prodMap = {};
+  list.forEach(function(d){
+    if(!prodMap[d.product]) prodMap[d.product] = {qty:0, amount:0};
+    prodMap[d.product].qty += d.qty; prodMap[d.product].amount += d.amount;
+  });
+  var prodRows = Object.keys(prodMap).map(function(p){
+    var info = PRODUCTS[p];
+    return '<tr><td>' + info.icon + ' ' + p + '</td><td>' + prodMap[p].qty.toFixed(2) + ' ' + info.unit + '</td><td style="font-weight:700">' + money(prodMap[p].amount) + '</td></tr>';
+  }).join('');
+  return '<h3 style="margin-bottom:10px">Monthly Report — ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</h3>' +
+    '<div class="stats-row-sm"><div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Deliveries</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(sumAmount(list)) + '</div><div class="stat-l">Revenue</div></div></div>' +
+    '<table class="data-table"><thead><tr><th>Product</th><th>Total Qty</th><th>Total Amount</th></tr></thead><tbody>' + (prodRows||'<tr><td colspan="3">No data</td></tr>') + '</tbody></table>';
+}
+
+function buildRevenueReport(date){
+  // Always show data from the month that has actual records
+  var latestDate = latestDataDate();
+  var useDate = date > latestDate ? latestDate : date;
+  var month = useDate.slice(0,7);
+  var todayRev = sumAmount(deliveriesOn(useDate));
+  var monthRev = sumAmount(deliveriesInMonth(month));
+  var yearRev = deliveries.filter(function(d){ return d.date.slice(0,4) === useDate.slice(0,4); }).reduce(function(s,d){return s+d.amount;},0);
+  var allTimeRev = sumAmount(deliveries);
+  var displayDate = useDate;
+  return '<h3 style="margin-bottom:10px">Revenue Report</h3>' +
+    '<div class="stats-row-sm">' +
+      '<div class="stat-card green"><div class="stat-v">' + money(todayRev) + '</div><div class="stat-l">Latest Day (' + fmtDate(displayDate) + ')</div></div>' +
+      '<div class="stat-card green"><div class="stat-v">' + money(monthRev) + '</div><div class="stat-l">This Month</div></div>' +
+      '<div class="stat-card green"><div class="stat-v">' + money(yearRev) + '</div><div class="stat-l">This Year</div></div>' +
+      '<div class="stat-card green"><div class="stat-v">' + money(allTimeRev) + '</div><div class="stat-l">All-Time</div></div>' +
+    '</div>';
+}
+
+function buildProductReport(){
+  var rows = Object.keys(PRODUCTS).map(function(p){
+    var list = deliveries.filter(function(d){ return d.product === p; });
+    var info = PRODUCTS[p];
+    var qty = sumQty(deliveries, p);
+    var amt = sumAmount(list);
+    return '<tr><td>' + info.icon + ' ' + p + '</td><td>' + qty.toFixed(2) + ' ' + info.unit + '</td><td>₹' + info.price + '/' + info.unit + '</td><td style="font-weight:700">' + money(amt) + '</td></tr>';
+  }).join('');
+  return '<h3 style="margin-bottom:10px">Product-wise Consumption (All-Time)</h3>' +
+    '<table class="data-table"><thead><tr><th>Product</th><th>Total Qty Sold</th><th>Rate</th><th>Total Revenue</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function buildBuyersReport(date){
+  var month = date.slice(0,7);
+  var totalBuyers = customers.length;
+  var activeBuyers = activeCustomers().length;
+  var newThisMonth = customers.filter(function(c){ return c.regDate.startsWith(month); }).length;
+  var newRows = customers.filter(function(c){ return c.regDate.startsWith(month); })
+    .map(function(c){ return '<tr><td>' + c.id + '</td><td>' + c.name + '</td><td>' + c.mobile + '</td><td>' + fmtDate(c.regDate) + '</td></tr>'; }).join('');
+  return '<h3 style="margin-bottom:10px">Buyers Report — ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</h3>' +
+    '<div class="stats-row-sm">' +
+      '<div class="stat-card"><div class="stat-v">' + totalBuyers + '</div><div class="stat-l">Total Buyers</div></div>' +
+      '<div class="stat-card green"><div class="stat-v">' + activeBuyers + '</div><div class="stat-l">Active Buyers</div></div>' +
+      '<div class="stat-card amber"><div class="stat-v">' + newThisMonth + '</div><div class="stat-l">New This Month</div></div>' +
+    '</div>' +
+    '<h4 style="margin:14px 0 8px;font-size:.86rem">New Buyers This Month</h4>' +
+    '<table class="data-table"><thead><tr><th>ID</th><th>Name</th><th>Mobile</th><th>Registered</th></tr></thead><tbody>' + (newRows || '<tr><td colspan="4"><div class="empty"><span class="icon">👤</span><p>No new buyers this month</p></div></td></tr>') + '</tbody></table>';
+}
+
+// ── EXPORTS ──────────────────────────────────────────
+function exportReportExcel(){
+  var type = document.getElementById('reportType').value;
+  var date = document.getElementById('reportDate').value || todayStr();
+  var wb = XLSX.utils.book_new();
+  var data = [];
+
+  if(type === 'daily') data = deliveriesOn(date);
+  else if(type === 'weekly'){ var end=new Date(date), start=new Date(date); start.setDate(start.getDate()-6); data = deliveriesInRange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]); }
+  else if(type === 'monthly') data = deliveriesInMonth(date.slice(0,7));
+  else data = deliveries;
+
+  var rows = data.map(function(d){
+    return { Date: fmtDate(d.date), Customer: d.custName, Slot: d.slot, Product: d.product, Qty: d.qty, Unit: PRODUCTS[d.product].unit, Amount: d.amount };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{Note:'No data'}]), 'Report');
+  XLSX.writeFile(wb, 'DairyDesk_' + type + '_report.xlsx');
+  toast('Excel exported!', 'ok');
+}
+
+function exportReportPDF(){
+  var doc = new jspdf.jsPDF();
+  var type = document.getElementById('reportType').value;
+  doc.setFontSize(16); doc.setTextColor(79,70,229);
+  doc.text('DairyDesk - ' + type.charAt(0).toUpperCase()+type.slice(1) + ' Report', 14, 18);
+  doc.setFontSize(10); doc.setTextColor(80,80,80);
+  doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 26);
+
+  var content = document.getElementById('reportContent').innerText.split('\n').filter(Boolean);
+  var y = 38;
+  content.slice(0, 45).forEach(function(line){
+    doc.text(line.slice(0,100), 14, y);
+    y += 6;
+    if(y > 280){ doc.addPage(); y = 18; }
+  });
+  doc.save('DairyDesk_' + type + '_report.pdf');
+  toast('PDF exported!', 'ok');
+}
+
+
+// ══════════════════════════════════════════════════════
+//  SETTINGS MODULE
+// ══════════════════════════════════════════════════════
+function renderSettings(){
+  // Pricing quick-edit cards
+  var el = document.getElementById('pricingSettings');
+  el.innerHTML = Object.keys(PRODUCTS).map(function(p){
+    var info = PRODUCTS[p];
+    return '<div class="fg" style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<span style="font-size:1.3rem;width:30px">' + info.icon + '</span>' +
+      '<div style="flex:1"><label style="margin-bottom:2px">' + p + ' (₹ per ' + info.unit + (info.note ? ' · ' + info.note : '') + ')</label>' +
+      '<input type="number" value="' + info.price + '" onchange="updatePrice(\'' + p + '\', this.value)"></div>' +
+    '</div>';
+  }).join('') +
+  '<button class="btn btn-primary btn-sm" style="margin-top:6px" onclick="toast(\'Pricing saved ✓\',\'ok\')">💾 Save Pricing</button>';
+
+  // Products table
+  renderProductsTable();
+
+  document.getElementById('settingsTheme').value = currentTheme;
+}
+
+function renderProductsTable(){
+  var tbody = document.getElementById('productsTableBody');
+  if(!tbody) return;
+  // Built-in products that should not be deletable
+  var builtIn = ['Milk','Curd','Buttermilk','Ghee'];
+  tbody.innerHTML = Object.keys(PRODUCTS).map(function(p){
+    var info = PRODUCTS[p];
+    var isBuiltIn = builtIn.indexOf(p) !== -1;
+    return '<tr>' +
+      '<td style="font-size:1.3rem">' + info.icon + '</td>' +
+      '<td><strong>' + p + '</strong>' + (isBuiltIn ? ' <span class="badge badge-blue" style="font-size:.6rem">Built-in</span>' : '') + '</td>' +
+      '<td>' + info.unit + '</td>' +
+      '<td style="font-weight:800;color:var(--primary)">₹' + info.price + '</td>' +
+      '<td style="color:var(--gray)">' + info.step + '</td>' +
+      '<td style="color:var(--gray);font-size:.8rem">' + (info.note || '—') + '</td>' +
+      '<td>' +
+        '<button class="btn-icon" onclick="openEditProductModal(\'' + p + '\')" title="Edit">✏️</button> ' +
+        (!isBuiltIn ? '<button class="btn-icon" style="background:#FEE2E2;border-color:#FCA5A5" onclick="deleteProduct(\'' + p + '\')" title="Delete">🗑️</button>' : '<button class="btn-icon" disabled style="opacity:.35;cursor:not-allowed" title="Built-in products cannot be deleted">🗑️</button>') +
+      '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+var editingProductName = null;
+
+function openAddProductModal(){
+  editingProductName = null;
+  document.getElementById('productModalTitle').textContent = 'Add New Product';
+  document.getElementById('pm-name').value = '';
+  document.getElementById('pm-icon').value = '';
+  document.getElementById('pm-unit').value = 'L';
+  document.getElementById('pm-price').value = '';
+  document.getElementById('pm-step').value = '0.5';
+  document.getElementById('pm-note').value = '';
+  document.getElementById('pm-name').disabled = false;
+  openModal('productModal');
+}
+
+function openEditProductModal(name){
+  editingProductName = name;
+  var info = PRODUCTS[name];
+  document.getElementById('productModalTitle').textContent = 'Edit Product — ' + name;
+  document.getElementById('pm-name').value = name;
+  document.getElementById('pm-name').disabled = true; // name is the key, can't change
+  document.getElementById('pm-icon').value = info.icon;
+  document.getElementById('pm-unit').value = info.unit;
+  document.getElementById('pm-price').value = info.price;
+  document.getElementById('pm-step').value = info.step;
+  document.getElementById('pm-note').value = info.note || '';
+  openModal('productModal');
+}
+
+function saveProduct(){
+  var name  = document.getElementById('pm-name').value.trim();
+  var icon  = document.getElementById('pm-icon').value.trim() || '📦';
+  var unit  = document.getElementById('pm-unit').value;
+  var price = parseFloat(document.getElementById('pm-price').value);
+  var step  = parseFloat(document.getElementById('pm-step').value) || 0.5;
+  var note  = document.getElementById('pm-note').value.trim();
+
+  if(!name){ toast('Product name is required', 'err'); return; }
+  if(isNaN(price) || price <= 0){ toast('Enter a valid price', 'err'); return; }
+
+  // Adding new — check for duplicate name
+  if(!editingProductName && PRODUCTS[name]){
+    toast('A product with this name already exists', 'err'); return;
+  }
+
+  var key = editingProductName || name;
+  PRODUCTS[key] = { unit: unit, price: price, step: step, icon: icon };
+  if(note) PRODUCTS[key].note = note;
+
+  persist();
+  closeModal('productModal');
+  toast((editingProductName ? 'Product updated' : '✅ Product "' + name + '" added') + ' — now available in deliveries', 'ok');
+  logActivity('settings', (editingProductName ? 'Updated' : 'Added') + ' product: ' + key);
+  renderSettings();
+  // Refresh delivery dropdown if open
+  populateCustomerDropdown && populateCustomerDropdown();
+}
+
+function deleteProduct(name){
+  if(!confirm('Delete product "' + name + '"? This won\'t affect existing delivery records.')) return;
+  delete PRODUCTS[name];
+  persist();
+  toast('Product "' + name + '" removed', 'err');
+  logActivity('settings', 'Deleted product: ' + name);
+  renderSettings();
+}
+
+function updatePrice(product, val){
+  var p = parseFloat(val);
+  if(isNaN(p) || p <= 0) return;
+  PRODUCTS[product].price = p;
+  persist();
+}
+
+function exportFullBackup(){
+  var backup = { customers: customers, deliveries: deliveries, activityLog: activityLog, pricing: PRODUCTS, exportedAt: new Date().toISOString() };
+  var blob = new Blob([JSON.stringify(backup, null, 2)], { type:'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'dairydesk_backup_' + todayStr() + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded!', 'ok');
+}
+
+function resetAllData(){
+  if(!confirm('This will delete ALL data and reload demo data. Continue?')) return;
+  localStorage.removeItem('dd_customers');
+  localStorage.removeItem('dd_deliveries');
+  localStorage.removeItem('dd_activity');
+  location.reload();
+}
+
+
+// ══════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════
+function doLogin(){
+  var u = document.getElementById('loginU').value.trim().toLowerCase();
+  var p = document.getElementById('loginP').value.trim();
+  if((u === 'admin' || u === 'dairy' || u === 'owner') && p === 'dairy123'){
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('appShell').style.display = 'block';
+    document.getElementById('navUser').textContent = '👤 ' + document.getElementById('loginU').value.trim();
+    initApp();
+  } else {
+    document.getElementById('loginErr').style.display = 'block';
+  }
+}
+function doLogout(){
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginWrap').style.display = 'flex';
+}
+
+// ══════════════════════════════════════════════════════
+//  THEME
+// ══════════════════════════════════════════════════════
+function applyTheme(){
+  document.documentElement.classList.toggle('dark', currentTheme === 'dark');
+  document.getElementById('themeBtn').textContent = currentTheme === 'dark' ? '☀️' : '🌙';
+  var sel = document.getElementById('settingsTheme');
+  if(sel) sel.value = currentTheme;
+}
+function toggleDarkMode(){
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  persist(); applyTheme();
+  refreshChartsForTheme();
+}
+function setTheme(t){ currentTheme = t; persist(); applyTheme(); refreshChartsForTheme(); }
+
+// ══════════════════════════════════════════════════════
+//  SIDEBAR / NAV
+// ══════════════════════════════════════════════════════
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); }
+
+function goPage(page){
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.side-link').forEach(function(l){ l.classList.remove('active'); });
+  document.getElementById('page-' + page).classList.add('active');
+  var link = document.querySelector('.side-link[data-page="' + page + '"]');
+  if(link) link.classList.add('active');
+  document.getElementById('sidebar').classList.remove('open');
+
+  if(page === 'dashboard')  renderDashboard();
+  if(page === 'customers')  { custPage = 1; renderCustomersTable(); }
+  if(page === 'deliveries') { delPage = 1; initDeliveryFilters(); renderDeliveriesTable(); }
+  if(page === 'billing')    { initBillMonths(); renderBillingPage(); }
+  if(page === 'reports')    { document.getElementById('reportDate').value = latestDataDate(); renderReportContent(); }
+  if(page === 'analytics')  renderAnalytics();
+  if(page === 'settings')   renderSettings();
+}
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+function initApp(){
+  applyTheme();
+  renderDashboard();
+}
+
+// ══════════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════════
+function toast(msg, type){
+  var wrap = document.getElementById('toastWrap');
+  var el = document.createElement('div');
+  el.className = 'toast ' + (type || '');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(function(){
+    el.style.opacity = '0'; el.style.transform = 'translateX(110px)'; el.style.transition = 'all .3s';
+    setTimeout(function(){ el.remove(); }, 300);
+  }, 2800);
+}
+
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.modal-bg').forEach(function(bg){
+    bg.addEventListener('click', function(e){ if(e.target === bg) bg.classList.remove('open'); });
+  });
+});
+
+// ══════════════════════════════════════════════════════
+//  COMMON HELPERS
+// ══════════════════════════════════════════════════════
+function activeCustomers(){ return customers.filter(function(c){ return c.status === 'active'; }); }
+function custById(id){ return customers.find(function(c){ return c.id === id; }); }
+
+function deliveriesOn(dateStr){ return deliveries.filter(function(d){ return d.date === dateStr; }); }
+function deliveriesInRange(from, to){
+  return deliveries.filter(function(d){ return d.date >= from && d.date <= to; });
+}
+function deliveriesInMonth(monthStr){ // 'YYYY-MM'
+  return deliveries.filter(function(d){ return d.date.startsWith(monthStr); });
+}
+
+function sumAmount(list){ return list.reduce(function(s,d){ return s + d.amount; }, 0); }
+function sumQty(list, product){
+  return list.filter(function(d){ return d.product === product; })
+             .reduce(function(s,d){ return s + d.qty; }, 0);
+}
+
+// Returns the latest date that has delivery data, or today if no data
+function latestDataDate(){
+  if(!deliveries || !deliveries.length) return todayStr();
+  return deliveries.reduce(function(max, d){ return d.date > max ? d.date : max; }, deliveries[0].date);
+}
+// Returns the earliest date that has delivery data
+function earliestDataDate(){
+  if(!deliveries || !deliveries.length) return todayStr();
+  return deliveries.reduce(function(min, d){ return d.date < min ? d.date : min; }, deliveries[0].date);
+}
+
+// ══════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderDashboard(){
+  var today = latestDataDate();  // use latest date with actual data
+
+  document.getElementById('dashDateLabel').textContent =
+    new Date(today + 'T00:00:00').toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) +
+    (today !== todayStr() ? ' <span style="font-size:.72rem;color:var(--amber);font-weight:700">(latest data)</span>' : '');
+
+  var todayDels = deliveriesOn(today);
+  var monthStart = today.slice(0,7);
+  var monthDels = deliveriesInMonth(monthStart);
+
+  var totalCust = customers.length;
+  var activeCust = activeCustomers().length;
+  var morningCount = new Set(todayDels.filter(function(d){ return d.slot === 'Morning'; }).map(function(d){ return d.custId; })).size;
+  var eveningCount = new Set(todayDels.filter(function(d){ return d.slot === 'Evening'; }).map(function(d){ return d.custId; })).size;
+  var milkToday = sumQty(todayDels, 'Milk');
+  var curdToday = sumQty(todayDels, 'Curd');
+  var bmToday   = sumQty(todayDels, 'Buttermilk');
+  var gheeToday = sumQty(todayDels, 'Ghee');
+  var todayRev  = sumAmount(todayDels);
+  var monthRev  = sumAmount(monthDels);
+
+  var stats = [
+    {icon:'👥', v: totalCust, l: 'Total Customers', cls:''},
+    {icon:'✅', v: activeCust, l: 'Active Customers', cls:'green'},
+    {icon:'☀️', v: morningCount, l: 'Morning Deliveries Today', cls:'amber'},
+    {icon:'🌙', v: eveningCount, l: 'Evening Deliveries Today', cls:'purple'},
+    {icon:'🥛', v: milkToday.toFixed(1)+'L', l: 'Milk Delivered Today', cls:'blue'},
+    {icon:'🍶', v: curdToday+' u', l: 'Curd Delivered Today', cls:'blue'},
+    {icon:'🥤', v: bmToday.toFixed(1)+'L', l: 'Buttermilk Today', cls:'blue'},
+    {icon:'✨', v: gheeToday.toFixed(2)+'kg', l: 'Ghee Delivered Today', cls:'blue'},
+    {icon:'💰', v: money(todayRev), l: "Today's Revenue", cls:'green'},
+    {icon:'📈', v: money(monthRev), l: 'Monthly Revenue', cls:'green'},
+  ];
+  document.getElementById('dashStats').innerHTML = stats.map(function(s){
+    return '<div class="stat-card ' + s.cls + '"><div class="stat-icon">' + s.icon + '</div>' +
+      '<div class="stat-v">' + s.v + '</div><div class="stat-l">' + s.l + '</div></div>';
+  }).join('');
+
+  renderDashCharts();
+  renderActivityFeed();
+}
+
+function renderActivityFeed(){
+  var el = document.getElementById('activityFeed');
+  if(!activityLog.length){ el.innerHTML = '<div class="empty"><span class="icon">🔔</span><p>No recent activity</p></div>'; return; }
+  el.innerHTML = activityLog.slice(0,8).map(function(a){
+    var icon = a.type === 'customer' ? '👤' : a.type === 'delivery' ? '🛵' : a.type === 'bill' ? '💰' : '🔔';
+    var when = new Date(a.time).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+    return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start">' +
+      '<span style="font-size:1rem">' + icon + '</span>' +
+      '<div style="flex:1"><div style="font-size:.84rem;color:var(--dark)">' + a.msg + '</div>' +
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">' + when + '</div></div></div>';
+  }).join('');
+}
+
+
+document.addEventListener('DOMContentLoaded', function(){
+  populateCustomerDropdown();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DairyDesk — Delivery & Billing Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ════════════════════ LOGIN ════════════════════ -->
+<div id="loginWrap" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🐄</div>
+    <h1 class="login-title">DairyDesk</h1>
+    <p class="login-sub">Delivery, Billing &amp; Analytics for Dairy Businesses</p>
+    <div class="fg"><label>Username</label>
+      <input id="loginU" value="admin" placeholder="Username" oninput="document.getElementById('loginErr').style.display='none'">
+    </div>
+    <div class="fg"><label>Password</label>
+      <input id="loginP" type="password" value="dairy123" placeholder="Password"
+        oninput="document.getElementById('loginErr').style.display='none'"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="loginErr" class="login-err">❌ Wrong credentials. Try: admin / dairy123</div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:.5rem" onclick="doLogin()">🔓 Login to Dashboard</button>
+    <p class="login-tip">Username: <strong>admin</strong> &nbsp;|&nbsp; Password: <strong>dairy123</strong></p>
+    <div class="login-footer">🐄 DairyDesk — Admin Console</div>
+  </div>
+</div>
+
+<!-- ════════════════════ APP SHELL ════════════════════ -->
+<div id="appShell" style="display:none">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <button class="hamburger" onclick="toggleSidebar()">☰</button>
+    <div class="tb-logo">🐄 DairyDesk</div>
+    <div class="tb-right">
+      <button class="theme-toggle" onclick="toggleDarkMode()" id="themeBtn">🌙</button>
+      <span id="navUser">👤 Admin</span>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+
+  <div class="shell-body">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="side-nav">
+        <button class="side-link active" data-page="dashboard" onclick="goPage('dashboard')">📊 <span>Dashboard</span></button>
+        <button class="side-link" data-page="customers" onclick="goPage('customers')">👥 <span>Customers</span></button>
+        <button class="side-link" data-page="deliveries" onclick="goPage('deliveries')">🛵 <span>Deliveries</span></button>
+        <button class="side-link" data-page="billing" onclick="goPage('billing')">💰 <span>Billing</span></button>
+        <button class="side-link" data-page="reports" onclick="goPage('reports')">📈 <span>Reports</span></button>
+        <button class="side-link" data-page="analytics" onclick="goPage('analytics')">📉 <span>Analytics</span></button>
+        <button class="side-link" data-page="settings" onclick="goPage('settings')">⚙️ <span>Settings</span></button>
+      </nav>
+      <div class="side-footer">
+        <div class="price-mini-title">Pricing</div>
+        <div class="price-mini">🥛 Milk ₹50/L</div>
+        <div class="price-mini">🍶 Curd ₹60/500g</div>
+        <div class="price-mini">🥤 Buttermilk ₹30/L</div>
+        <div class="price-mini">✨ Ghee ₹1800/kg</div>
+      </div>
+    </aside>
+
+    <!-- PAGE AREA -->
+    <main class="page-area">
+
+      <!-- ═══ DASHBOARD ═══ -->
+      <section id="page-dashboard" class="page active">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Dashboard</h1><p class="pg-sub" id="dashDateLabel"></p></div>
+        </div>
+        <div class="stats-grid" id="dashStats"></div>
+        <div class="dash-charts-row">
+          <div class="card chart-card">
+            <div class="card-head"><h3>Revenue Trend (14 days)</h3></div>
+            <div class="card-body"><canvas id="chartRevTrend" height="220"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-head"><h3>Today: Morning vs Evening</h3></div>
+            <div class="card-body"><canvas id="chartTodaySlot" height="220"></canvas></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-head"><h3>🔔 Recent Activity</h3></div>
+          <div class="card-body" id="activityFeed"></div>
+        </div>
+      </section>
+
+      <!-- ═══ CUSTOMERS ═══ -->
+      <section id="page-customers" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Customers</h1><p class="pg-sub">Manage customer accounts</p></div>
+          <button class="btn btn-primary" onclick="openCustModal()">➕ Add Customer</button>
+        </div>
+        <div class="filter-bar">
+          <input type="text" id="custSearch" class="search-input" placeholder="🔍 Search name or mobile..." oninput="renderCustomersTable()">
+          <select id="custStatusFilter" onchange="renderCustomersTable()">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <select id="custPrefFilter" onchange="renderCustomersTable()">
+            <option value="">All Preferences</option>
+            <option value="Morning">Morning</option>
+            <option value="Evening">Evening</option>
+            <option value="Both">Both</option>
+          </select>
+        </div>
+        <div class="table-wrap card">
+          <table class="data-table">
+            <thead><tr>
+              <th>ID</th><th>Name</th><th>Mobile</th><th>Address</th><th>Preference</th><th>Status</th><th>Reg. Date</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="custTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="custPagination"></div>
+      </section>
+
+      <!-- ═══ DELIVERIES ═══ -->
+      <section id="page-deliveries" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Deliveries</h1><p class="pg-sub">Record and track daily deliveries</p></div>
+          <button class="btn btn-primary" onclick="openDeliveryModal()">➕ Add Delivery</button>
+        </div>
+        <div class="filter-bar">
+          <input type="date" id="delFilterFrom" onchange="renderDeliveriesTable()">
+          <span style="color:var(--gray);font-size:.82rem">to</span>
+          <input type="date" id="delFilterTo" onchange="renderDeliveriesTable()">
+          <select id="delFilterSlot" onchange="renderDeliveriesTable()">
+            <option value="">All Slots</option><option value="Morning">Morning</option><option value="Evening">Evening</option>
+          </select>
+          <select id="delFilterProduct" onchange="renderDeliveriesTable()">
+            <option value="">All Products</option><option value="Milk">Milk</option><option value="Curd">Curd</option><option value="Buttermilk">Buttermilk</option><option value="Ghee">Ghee</option>
+          </select>
+          <input type="text" id="delFilterCust" class="search-input" placeholder="🔍 Customer name..." oninput="renderDeliveriesTable()" style="max-width:200px">
+          <button class="btn btn-ghost" onclick="clearDeliveryFilters()">Clear</button>
+        </div>
+        <div class="stats-row-sm" id="delQuickStats"></div>
+        <div class="table-wrap card">
+          <table class="data-table">
+            <thead><tr><th>Date</th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Amount</th><th>Actions</th></tr></thead>
+            <tbody id="delTableBody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="delPagination"></div>
+      </section>
+
+      <!-- ═══ BILLING ═══ -->
+      <section id="page-billing" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Billing</h1><p class="pg-sub">Generate monthly bills per customer</p></div>
+          <div style="display:flex;gap:8px">
+            <select id="billMonth"></select>
+            <button class="btn btn-primary" onclick="generateAllBills()">⚡ Generate All Bills</button>
+          </div>
+        </div>
+        <div class="stats-row-sm" id="billStats"></div>
+        <div class="bill-grid" id="billGrid"></div>
+      </section>
+
+      <!-- ═══ REPORTS ═══ -->
+      <section id="page-reports" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Reports</h1><p class="pg-sub">Business reports with export options</p></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="exportReportExcel()">📥 Excel</button>
+            <button class="btn btn-ghost" onclick="exportReportPDF()">📄 PDF</button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <select id="reportType" onchange="renderReportContent()">
+            <option value="daily">Daily Delivery Report</option>
+            <option value="weekly">Weekly Report</option>
+            <option value="monthly">Monthly Report</option>
+            <option value="revenue">Revenue Report</option>
+            <option value="product">Product-wise Consumption</option>
+            <option value="buyers">Total / New Buyers</option>
+          </select>
+          <input type="date" id="reportDate" onchange="renderReportContent()">
+        </div>
+        <div class="card"><div class="card-body" id="reportContent"></div></div>
+      </section>
+
+      <!-- ═══ ANALYTICS ═══ -->
+      <section id="page-analytics" class="page">
+        <div class="pg-head"><div><h1 class="pg-title">Analytics</h1><p class="pg-sub">Visual insights into your dairy business</p></div></div>
+        <div class="analytics-grid">
+          <div class="card chart-card"><div class="card-head"><h3>Customer Growth</h3></div><div class="card-body"><canvas id="chartCustGrowth" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Daily Sales (30 days)</h3></div><div class="card-body"><canvas id="chartDailySales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Monthly Sales</h3></div><div class="card-body"><canvas id="chartMonthlySales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Product-wise Sales</h3></div><div class="card-body"><canvas id="chartProductSales" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Morning vs Evening</h3></div><div class="card-body"><canvas id="chartSlotSplit" height="240"></canvas></div></div>
+          <div class="card chart-card"><div class="card-head"><h3>Revenue Trend</h3></div><div class="card-body"><canvas id="chartRevTrend2" height="240"></canvas></div></div>
+        </div>
+      </section>
+
+      <!-- ═══ SETTINGS ═══ -->
+      <section id="page-settings" class="page">
+        <div class="pg-head"><div><h1 class="pg-title">Settings</h1><p class="pg-sub">Pricing, appearance &amp; data</p></div></div>
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-head"><h3>💰 Product Pricing</h3></div>
+            <div class="card-body" id="pricingSettings"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🎨 Appearance</h3></div>
+            <div class="card-body">
+              <div class="fg"><label>Theme</label>
+                <select id="settingsTheme" onchange="setTheme(this.value)">
+                  <option value="light">Light</option><option value="dark">Dark</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🗄️ Data Management</h3></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn btn-ghost" onclick="exportFullBackup()">⬇️ Export Full Backup (JSON)</button>
+              <button class="btn btn-red" onclick="resetAllData()">🗑️ Reset All Data (Reseed Demo)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ════════════════════ MODALS ════════════════════ -->
+
+<!-- ADD/EDIT CUSTOMER -->
+<div class="modal-bg" id="custModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('custModal')">✕</button>
+    <h2 id="custModalTitle">Add New Customer</h2>
+    <div class="frow">
+      <div class="fg"><label>Full Name *</label><input id="c-name" placeholder="e.g. Laxman ji"></div>
+      <div class="fg"><label>Mobile Number *</label><input type="tel" id="c-mobile" placeholder="10-digit number"></div>
+    </div>
+    <div class="fg"><label>Address</label><textarea id="c-addr" rows="2" placeholder="Full address..."></textarea></div>
+    <div class="frow">
+      <div class="fg"><label>Delivery Preference</label>
+        <select id="c-pref"><option>Morning</option><option>Evening</option><option>Both</option></select>
+      </div>
+      <div class="fg"><label>Status</label>
+        <select id="c-status"><option value="active">Active</option><option value="inactive">Inactive</option></select>
+      </div>
+    </div>
+    <div class="fg"><label>Registration Date</label><input type="date" id="c-regdate"></div>
+    <div class="fg"><label>Notes</label><textarea id="c-notes" rows="2" placeholder="Any notes about this customer..."></textarea></div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="saveCustomer()">💾 Save Customer</button>
+  </div>
+</div>
+
+<!-- VIEW CUSTOMER -->
+<div class="modal-bg" id="viewCustModal">
+  <div class="modal" style="width:min(620px,97vw)">
+    <button class="modal-close" onclick="closeModal('viewCustModal')">✕</button>
+    <div id="viewCustContent"></div>
+  </div>
+</div>
+
+<!-- ADD DELIVERY -->
+<div class="modal-bg" id="deliveryModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('deliveryModal')">✕</button>
+    <h2>Add Delivery</h2>
+    <div class="frow">
+      <div class="fg"><label>Date *</label><input type="date" id="d-date"></div>
+      <div class="fg"><label>Slot *</label><select id="d-slot"><option>Morning</option><option>Evening</option></select></div>
+    </div>
+    <div class="fg"><label>Customer *</label>
+      <select id="d-customer"></select>
+    </div>
+    <div id="d-productRows" class="prod-rows"></div>
+    <button class="btn btn-ghost btn-sm" onclick="addDeliveryProductRow()" style="margin:8px 0">+ Add Product Line</button>
+    <div class="delivery-total-bar">
+      <span>Total Amount</span><strong id="d-totalDisplay">₹0</strong>
+    </div>
+    <button class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="saveDelivery()">✅ Record Delivery</button>
+  </div>
+</div>
+
+<!-- BILL VIEW -->
+<div class="modal-bg" id="billModal">
+  <div class="modal" style="width:min(600px,97vw)">
+    <button class="modal-close" onclick="closeModal('billModal')">✕</button>
+    <div id="billModalContent"></div>
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="customers.js"></script>
+<script src="deliveries.js"></script>
+<script src="billing.js"></script>
+<script src="reports.js"></script>
+<script src="settings.js"></script>
+<script src="app.js"></script>
+<script>
+  // Populate customer dropdown once data.js has loaded (used by deliveries module)
+  document.addEventListener('DOMContentLoaded', function(){
+    populateCustomerDropdown();
+  });
+</script>
+</body>
+</html>
