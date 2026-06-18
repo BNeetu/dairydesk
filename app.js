@@ -336,7 +336,7 @@ function goPage(page){
   if(page === 'deliveries') { delPage = 1; initDeliveryFilters(); renderDeliveriesTable(); }
   if(page === 'billing')    { initBillMonths(); renderBillingPage(); }
   if(page === 'reports')    { document.getElementById('reportDate').value = latestDataDate(); renderReportContent(); }
-  if(page === 'analytics')  renderAnalytics();
+
   if(page === 'settings')   renderSettings();
 }
 

@@ -362,18 +362,7 @@ img,canvas{max-width:100%}
         <div class="card"><div class="card-body" id="reportContent"></div></div>
       </section>
 
-      <!-- ═══ ANALYTICS ═══ -->
-      <section id="page-analytics" class="page">
-        <div class="pg-head"><div><h1 class="pg-title">Analytics</h1><p class="pg-sub">Visual insights into your dairy business</p></div></div>
-        <div class="analytics-grid">
-          <div class="card chart-card"><div class="card-head"><h3>Customer Growth</h3></div><div class="card-body"><canvas id="chartCustGrowth" height="240"></canvas></div></div>
-          <div class="card chart-card"><div class="card-head"><h3>Daily Sales (30 days)</h3></div><div class="card-body"><canvas id="chartDailySales" height="240"></canvas></div></div>
-          <div class="card chart-card"><div class="card-head"><h3>Monthly Sales</h3></div><div class="card-body"><canvas id="chartMonthlySales" height="240"></canvas></div></div>
-          <div class="card chart-card"><div class="card-head"><h3>Product-wise Sales</h3></div><div class="card-body"><canvas id="chartProductSales" height="240"></canvas></div></div>
-          <div class="card chart-card"><div class="card-head"><h3>Morning vs Evening</h3></div><div class="card-body"><canvas id="chartSlotSplit" height="240"></canvas></div></div>
-          <div class="card chart-card"><div class="card-head"><h3>Revenue Trend</h3></div><div class="card-body"><canvas id="chartRevTrend2" height="240"></canvas></div></div>
-        </div>
-      </section>
+
 
       <!-- ═══ SETTINGS ═══ -->
       <section id="page-settings" class="page">
@@ -1743,6 +1732,34 @@ function renderDashboard(){
     {icon:'📈', v: money(monthRev), l: 'Monthly Revenue', cls:'green'},
   ];
   document.getElementById('dashStats').innerHTML = stats.map(function(s){
+    return '<div class="stat-card ' + s.cls + '"><div class="stat-icon">' + s.icon + '</div>' +
+      '<div class="stat-v">' + s.v + '</div><div class="stat-l">' + s.l + '</div></div>';
+  }).join('');
+
+  renderDashCharts();
+  renderActivityFeed();
+}
+
+function renderActivityFeed(){
+  var el = document.getElementById('activityFeed');
+  if(!activityLog.length){ el.innerHTML = '<div class="empty"><span class="icon">🔔</span><p>No recent activity</p></div>'; return; }
+  el.innerHTML = activityLog.slice(0,8).map(function(a){
+    var icon = a.type === 'customer' ? '👤' : a.type === 'delivery' ? '🛵' : a.type === 'bill' ? '💰' : '🔔';
+    var when = new Date(a.time).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+    return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start">' +
+      '<span style="font-size:1rem">' + icon + '</span>' +
+      '<div style="flex:1"><div style="font-size:.84rem;color:var(--dark)">' + a.msg + '</div>' +
+      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">' + when + '</div></div></div>';
+  }).join('');
+}
+
+
+document.addEventListener('DOMContentLoaded', function(){
+  populateCustomerDropdown();
+});
+</script>
+</body>
+</html>ntById('dashStats').innerHTML = stats.map(function(s){
     return '<div class="stat-card ' + s.cls + '"><div class="stat-icon">' + s.icon + '</div>' +
       '<div class="stat-v">' + s.v + '</div><div class="stat-l">' + s.l + '</div></div>';
   }).join('');
