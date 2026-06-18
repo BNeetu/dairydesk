@@ -1698,32 +1698,4 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 </body>
-</html>ntById('dashStats').innerHTML = stats.map(function(s){
-    return '<div class="stat-card ' + s.cls + '"><div class="stat-icon">' + s.icon + '</div>' +
-      '<div class="stat-v">' + s.v + '</div><div class="stat-l">' + s.l + '</div></div>';
-  }).join('');
-
-  renderDashCharts();
-  renderActivityFeed();
-}
-
-function renderActivityFeed(){
-  var el = document.getElementById('activityFeed');
-  if(!activityLog.length){ el.innerHTML = '<div class="empty"><span class="icon">🔔</span><p>No recent activity</p></div>'; return; }
-  el.innerHTML = activityLog.slice(0,8).map(function(a){
-    var icon = a.type === 'customer' ? '👤' : a.type === 'delivery' ? '🛵' : a.type === 'bill' ? '💰' : '🔔';
-    var when = new Date(a.time).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
-    return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start">' +
-      '<span style="font-size:1rem">' + icon + '</span>' +
-      '<div style="flex:1"><div style="font-size:.84rem;color:var(--dark)">' + a.msg + '</div>' +
-      '<div style="font-size:.7rem;color:var(--gray);margin-top:2px">' + when + '</div></div></div>';
-  }).join('');
-}
-
-
-document.addEventListener('DOMContentLoaded', function(){
-  populateCustomerDropdown();
-});
-</script>
-</body>
 </html>
