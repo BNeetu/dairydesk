@@ -25,20 +25,24 @@ function updatePrice(product, val){
 }
 
 function exportFullBackup(){
-  var backup = { customers: customers, deliveries: deliveries, activityLog: activityLog, pricing: PRODUCTS, exportedAt: new Date().toISOString() };
-  var blob = new Blob([JSON.stringify(backup, null, 2)], { type:'application/json' });
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url; a.download = 'dairydesk_backup_' + todayStr() + '.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast('Backup downloaded!', 'ok');
-}
+  var wb = XLSX.utils.book_new();
 
-function resetAllData(){
-  if(!confirm('This will delete ALL data and reload demo data. Continue?')) return;
-  localStorage.removeItem('dd_customers');
-  localStorage.removeItem('dd_deliveries');
-  localStorage.removeItem('dd_activity');
-  location.reload();
+  var custData = customers.length ? customers.map(function(c){
+    return { ID: c.id, Name: c.name, Mobile: c.mobile, Address: c.address, Preference: c.pref, Status: c.status, RegDate: c.regDate, Notes: c.notes };
+  }) : [{Note:'No customers'}];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(custData), 'Customers');
+
+  var delData = deliveries.length ? deliveries.map(function(d){
+    return { ID: d.id, Date: d.date, CustID: d.custId, Customer: d.custName, Slot: d.slot, Product: d.product, Qty: d.qty, Amount: d.amount };
+  }) : [{Note:'No deliveries'}];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(delData), 'Deliveries');
+
+  var pricingData = Object.keys(PRODUCTS).map(function(p){
+    var info = PRODUCTS[p];
+    return { Product: p, Unit: info.unit, Price: info.price, Step: info.step, Note: info.note || '' };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pricingData), 'Pricing');
+
+  XLSX.writeFile(wb, 'DairyDesk_FullBackup_' + todayStr() + '.xlsx');
+  toast('Excel Backup downloaded!', 'ok');
 }
