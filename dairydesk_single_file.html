@@ -579,7 +579,6 @@ function buildSeedData(){
 
   // Kunal
   range('Kunal', 1, 5, 2, 'Evening');
-  add('Kunal', 1, 2.5, 'Evening'); 
 
   // Vishal
   range('Vishal', 2, 5, 1, 'Morning');
@@ -620,14 +619,6 @@ function buildSeedData(){
   // Pradeep Choudhary
   add('Pradeep Choudhary', 17, 1, 'Morning');
 
-  // Previous Demo Data
-  add('Sumit Yash', 2, 2, 'Morning');
-  add('Arpan', 2, 1, 'Morning'); add('Arpan', 3, 1, 'Morning'); add('Arpan', 4, 1, 'Morning'); add('Arpan', 5, 1, 'Evening');
-  add('Vikku', 3, 1, 'Morning'); add('Vikku', 4, 1, 'Evening'); add('Vikku', 5, 1, 'Evening');
-  add('Kanu', 3, 1, 'Morning'); add('Kanu', 4, 1, 'Evening'); add('Kanu', 5, 1, 'Evening');
-  add('Rahul Vishal', 3, 1, 'Morning');
-  add('Rahul RC', 4, 1, 'Morning');
-  add('Rahul Bhai', 4, 1, 'Evening');
 
   var uniqueNames = Array.from(new Set(rawData.map(function(r){ return r.n; })));
   var custs = uniqueNames.map(function(name, i){
@@ -660,8 +651,8 @@ function buildSeedData(){
   return { custs: custs, dels: dels };
 }
 
-// Force reseed v4
-var SEED_VERSION = 'v4';
+// Force reseed v5
+var SEED_VERSION = 'v5';
 if(!customers || !deliveries || lsGet('dd_seed_ver','') !== SEED_VERSION){
   localStorage.removeItem('dd_customers');
   localStorage.removeItem('dd_deliveries');
@@ -669,7 +660,7 @@ if(!customers || !deliveries || lsGet('dd_seed_ver','') !== SEED_VERSION){
   var seed = buildSeedData();
   customers  = seed.custs;
   deliveries = seed.dels;
-  activityLog = [{ type:'system', msg:'Comprehensive real dataset loaded', time: Date.now() }];
+  activityLog = [{ type:'system', msg:'Final 12-customer dataset loaded', time: Date.now() }];
   localStorage.setItem('dd_seed_ver', JSON.stringify(SEED_VERSION));
   persist();
 }
