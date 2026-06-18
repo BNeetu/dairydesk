@@ -102,9 +102,8 @@ function deleteDelivery(id){
 
 function initDeliveryFilters(){
   if(!document.getElementById('delFilterFrom').value){
-    var d = new Date(); d.setDate(d.getDate() - 7);
-    document.getElementById('delFilterFrom').value = d.toISOString().split('T')[0];
-    document.getElementById('delFilterTo').value = todayStr();
+    document.getElementById('delFilterFrom').value = earliestDataDate();
+    document.getElementById('delFilterTo').value = latestDataDate();
   }
 }
 
