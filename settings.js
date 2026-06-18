@@ -32,9 +32,43 @@ function exportFullBackup(){
   }) : [{Note:'No customers'}];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(custData), 'Customers');
 
-  var delData = deliveries.length ? deliveries.map(function(d){
-    return { ID: d.id, Date: d.date, CustID: d.custId, Customer: d.custName, Slot: d.slot, Product: d.product, Qty: d.qty, Amount: d.amount };
-  }) : [{Note:'No deliveries'}];
+  var uniqueDates = Array.from(new Set(deliveries.map(function(d){ return d.date; }))).sort();
+  var custMap = {};
+  deliveries.forEach(function(d){
+    if(!custMap[d.custName]) custMap[d.custName] = { totalQty: 0, totalAmt: 0, dates: {} };
+    if(!custMap[d.custName].dates[d.date]) custMap[d.custName].dates[d.date] = [];
+    custMap[d.custName].dates[d.date].push(d);
+    custMap[d.custName].totalQty += d.qty;
+    custMap[d.custName].totalAmt += d.amount;
+  });
+
+  var delData = [];
+  if(Object.keys(custMap).length === 0){
+    delData = [{Note:'No deliveries'}];
+  } else {
+    delData = Object.keys(custMap).map(function(cName){
+      var row = { Customer: cName };
+      uniqueDates.forEach(function(dt){
+        var dels = custMap[cName].dates[dt];
+        var colName = dt.split('-')[2] + '/' + dt.split('-')[1];
+        if(dels && dels.length){
+          var slots = {};
+          dels.forEach(function(d){
+            var key = d.slot.charAt(0);
+            if(d.product !== 'Milk') key += '(' + d.product.substring(0,2) + ')';
+            if(!slots[key]) slots[key] = 0;
+            slots[key] += d.qty;
+          });
+          row[colName] = Object.keys(slots).map(function(k){ return k + '-' + slots[k]; }).join(',');
+        } else {
+          row[colName] = '';
+        }
+      });
+      row['Monthly Total Qty'] = custMap[cName].totalQty;
+      row['Monthly Total Amt'] = custMap[cName].totalAmt;
+      return row;
+    });
+  }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(delData), 'Deliveries');
 
   var pricingData = Object.keys(PRODUCTS).map(function(p){
