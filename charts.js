@@ -22,7 +22,7 @@ function makeChart(canvasId, config){
 function refreshChartsForTheme(){
   // Re-render whichever page is active so charts redraw with new colors
   if(document.getElementById('page-dashboard').classList.contains('active')) renderDashCharts();
-  if(document.getElementById('page-analytics').classList.contains('active')) renderAnalytics();
+
 }
 
 function baseLineOptions(c){
