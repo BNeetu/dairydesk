@@ -160,6 +160,7 @@ img,canvas{max-width:100%}
 .toast{background:var(--dark);color:#fff;padding:11px 18px;border-radius:10px;font-weight:700;font-size:.85rem;box-shadow:var(--shadow-lg);animation:slideIn .25s ease;max-width:300px}
 .toast.ok{background:var(--secondary)}
 .toast.err{background:var(--red)}
+.toast.warn{background:var(--amber)}
 @keyframes slideIn{from{transform:translateX(110px);opacity:0}to{transform:translateX(0);opacity:1}}
 
 /* ── EMPTY ── */

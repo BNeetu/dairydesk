@@ -1,9 +1,26 @@
 // ══════════════════════════════════════════════════════
 //  REPORTS MODULE
 // ══════════════════════════════════════════════════════
+// Normalize any date-ish input (date-only, month-only, or full ISO datetime)
+// into a plain YYYY-MM-DD string. Falls back to today on anything unparsable.
+function toIsoDate(d){
+  try{
+    var s = d || '';
+    s = String(s).trim();
+    if(!s) return todayStr();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if(/^\d{4}-\d{2}$/.test(s)) return s + '-01';
+    var dt = new Date(s);
+    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    dt = new Date(s + 'T00:00:00');
+    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    return todayStr();
+  }catch(e){ return todayStr(); }
+}
+
 function renderReportContent(){
   var type = document.getElementById('reportType').value;
-  var dateVal = document.getElementById('reportDate').value || todayStr();
+  var dateVal = toIsoDate(document.getElementById('reportDate').value || todayStr());
   var el = document.getElementById('reportContent');
 
   if(type === 'daily')   el.innerHTML = buildDailyReport(dateVal);
@@ -17,7 +34,7 @@ function renderReportContent(){
 function reportTableRows(list){
   return list.map(function(d){
     var info = PRODUCTS[d.product];
-    return '<tr><td>' + fmtDate(d.date) + '</td><td>' + d.custName + '</td><td>' + d.slot + '</td><td>' + info.icon + ' ' + d.product + '</td><td>' + d.qty + ' ' + info.unit + '</td><td style="font-weight:700">' + money(d.amount) + '</td></tr>';
+    return '<tr><td>' + fmtDate(d.date) + '</td><td>' + escapeHtml(d.custName) + '</td><td>' + d.slot + '</td><td>' + info.icon + ' ' + d.product + '</td><td>' + d.qty + ' ' + info.unit + '</td><td style="font-weight:700">' + money(d.amount) + '</td></tr>';
   }).join('') || '<tr><td colspan="6"><div class="empty"><span class="icon">📭</span><p>No records</p></div></td></tr>';
 }
 
@@ -30,7 +47,13 @@ function buildDailyReport(date){
 }
 
 function buildWeeklyReport(date){
-  var end = new Date(date); var start = new Date(date); start.setDate(start.getDate()-6);
+  var end = new Date(date + 'T00:00:00');
+  var start = new Date(date + 'T00:00:00'); start.setDate(start.getDate()-6);
+  var dataLatest = latestDataDate();
+  var dataEarliest = earliestDataDate();
+  // If the requested date is beyond the data we have, clamp the window to the
+  // actual data range so the report isn't just empty.
+  if(date > dataLatest){ end = new Date(dataLatest + 'T00:00:00'); start = new Date(dataEarliest + 'T00:00:00'); }
   var sStr = start.toISOString().split('T')[0], eStr = end.toISOString().split('T')[0];
   var list = deliveriesInRange(sStr, eStr);
   return '<h3 style="margin-bottom:10px">Weekly Report — ' + fmtDateLong(sStr) + ' to ' + fmtDateLong(eStr) + '</h3>' +
@@ -59,15 +82,16 @@ function buildMonthlyReport(date){
 }
 
 function buildRevenueReport(date){
-  var month = date.slice(0,7);
-  var todayRev = sumAmount(deliveriesOn(date));
+  var latestDate = latestDataDate();
+  var useDate = date > latestDate ? latestDate : date;
+  var month = useDate.slice(0,7);
+  var todayRev = sumAmount(deliveriesOn(useDate));
   var monthRev = sumAmount(deliveriesInMonth(month));
-  var yearStart = date.slice(0,4) + '-01';
-  var yearRev = deliveries.filter(function(d){ return d.date.slice(0,4) === date.slice(0,4); }).reduce(function(s,d){return s+d.amount;},0);
+  var yearRev = deliveries.filter(function(d){ return d.date.slice(0,4) === useDate.slice(0,4); }).reduce(function(s,d){return s+d.amount;},0);
   var allTimeRev = sumAmount(deliveries);
   return '<h3 style="margin-bottom:10px">Revenue Report</h3>' +
     '<div class="stats-row-sm">' +
-      '<div class="stat-card green"><div class="stat-v">' + money(todayRev) + '</div><div class="stat-l">Today (' + fmtDate(date) + ')</div></div>' +
+      '<div class="stat-card green"><div class="stat-v">' + money(todayRev) + '</div><div class="stat-l">Latest Day (' + fmtDate(useDate) + ')</div></div>' +
       '<div class="stat-card green"><div class="stat-v">' + money(monthRev) + '</div><div class="stat-l">This Month</div></div>' +
       '<div class="stat-card green"><div class="stat-v">' + money(yearRev) + '</div><div class="stat-l">This Year</div></div>' +
       '<div class="stat-card green"><div class="stat-v">' + money(allTimeRev) + '</div><div class="stat-l">All-Time</div></div>' +
@@ -92,7 +116,7 @@ function buildBuyersReport(date){
   var activeBuyers = activeCustomers().length;
   var newThisMonth = customers.filter(function(c){ return c.regDate.startsWith(month); }).length;
   var newRows = customers.filter(function(c){ return c.regDate.startsWith(month); })
-    .map(function(c){ return '<tr><td>' + c.id + '</td><td>' + c.name + '</td><td>' + c.mobile + '</td><td>' + fmtDate(c.regDate) + '</td></tr>'; }).join('');
+    .map(function(c){ return '<tr><td>' + c.id + '</td><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.mobile) + '</td><td>' + fmtDate(c.regDate) + '</td></tr>'; }).join('');
   return '<h3 style="margin-bottom:10px">Buyers Report — ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</h3>' +
     '<div class="stats-row-sm">' +
       '<div class="stat-card"><div class="stat-v">' + totalBuyers + '</div><div class="stat-l">Total Buyers</div></div>' +
@@ -106,7 +130,7 @@ function buildBuyersReport(date){
 // ── EXPORTS ──────────────────────────────────────────
 function exportReportExcel(){
   var type = document.getElementById('reportType').value;
-  var date = document.getElementById('reportDate').value || todayStr();
+  var date = toIsoDate(document.getElementById('reportDate').value || todayStr());
   var wb = XLSX.utils.book_new();
   var data = [];
 
@@ -131,7 +155,8 @@ function exportReportPDF(){
   doc.setFontSize(10); doc.setTextColor(80,80,80);
   doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 26);
 
-  var content = document.getElementById('reportContent').innerText.split('\n').filter(Boolean);
+  var contentEl = document.getElementById('reportContent');
+  var content = (contentEl.innerText || contentEl.textContent || '').split('\n').filter(Boolean);
   var y = 38;
   content.slice(0, 45).forEach(function(line){
     doc.text(line.slice(0,100), 14, y);

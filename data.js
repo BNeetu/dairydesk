@@ -60,6 +60,7 @@ function loadRemoteState(){
     .then(function(data){
       if(!data || !data.success) throw new Error((data && data.error) || 'Invalid Google Sheets response');
       if(!Array.isArray(data.customers) || !Array.isArray(data.deliveries)){
+        console.error('Google Sheets returned invalid remote app data', data);
         throw new Error('Remote app data is invalid');
       }
       customers = data.customers;
@@ -130,6 +131,13 @@ function deleteCustomerRemote(custId){
 }
 function uid(prefix){ return (prefix||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
 function todayStr(){ return new Date().toISOString().split('T')[0]; }
+// Escape user-entered text (customer names, addresses, notes, etc.) before
+// inserting it into innerHTML, so special characters like < > & " ' render
+// as plain text instead of breaking markup.
+function escapeHtml(str){
+  if(str === null || typeof str === 'undefined') return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
 function fmtDate(d){
   if(!d) return '';
   try{

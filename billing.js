@@ -58,11 +58,7 @@ function ensureHtml2Canvas(){
   return window._html2canvasLoading;
 }
 
-// Escape text for safe HTML insertion
-function escapeHtml(str){
-  if(str === null || typeof str === 'undefined') return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
+// escapeHtml is defined once, in data.js, and shared across all modules.
 
 function buildCustomerBill(custId){
   var c = custById(custId);
@@ -122,7 +118,7 @@ function renderBillingPage(){
     }).join('');
     return '<div class="bill-card">' +
       '<div class="bill-card-top">' +
-        '<div><div class="bill-cust-name">' + b.customer.name + '</div><div class="bill-cust-meta">' + b.customer.id + ' · ' + b.deliveries.length + ' deliveries</div></div>' +
+        '<div><div class="bill-cust-name">' + escapeHtml(b.customer.name) + '</div><div class="bill-cust-meta">' + b.customer.id + ' · ' + b.deliveries.length + ' deliveries</div></div>' +
         '<div class="bill-total">' + money(b.grandTotal) + '</div>' +
       '</div>' +
       '<div class="bill-rows">' + rows + '</div>' +
@@ -158,11 +154,11 @@ function openBillModal(custId){
 
   document.getElementById('billModalContent').innerHTML =
     '<h2 style="color:var(--primary);margin-bottom:4px">Customer Invoice</h2>' +
-    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">' + b.customer.name + ' (' + b.customer.id + ') · Period: ' + range + '</p>' +
+    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">' + escapeHtml(b.customer.name) + ' (' + b.customer.id + ') · Period: ' + range + '</p>' +
     '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">' +
-      '<div><strong>Customer</strong><div>' + b.customer.name + '</div></div>' +
+      '<div><strong>Customer</strong><div>' + escapeHtml(b.customer.name) + '</div></div>' +
       '<div><strong>Customer ID</strong><div>' + b.customer.id + '</div></div>' +
-      '<div><strong>Mobile</strong><div>' + (b.customer.mobile || '—') + '</div></div>' +
+      '<div><strong>Mobile</strong><div>' + escapeHtml(b.customer.mobile || '—') + '</div></div>' +
     '</div>' +
     '<table class="data-table" style="margin-bottom:14px">' +
       '<thead><tr><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amount</th></tr></thead>' +

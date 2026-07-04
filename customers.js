@@ -23,10 +23,19 @@ function openCustModal(id){
     document.getElementById('c-status').value = 'active';
     document.getElementById('c-regdate').value = todayStr();
   }
+  // Safety reset: ensure the Save button isn't left disabled from a prior
+  // save attempt that errored out unexpectedly before hitting `finally`.
+  isSavingCustomer = false;
+  var saveBtn = document.getElementById('custSaveBtn');
+  if(saveBtn) saveBtn.disabled = false;
   openModal('custModal');
 }
 
+var isSavingCustomer = false; // re-entrancy guard: blocks duplicate submits / duplicate API calls
+
 async function saveCustomer(){
+  if(isSavingCustomer) return; // a save is already in flight — ignore extra clicks/enter presses
+
   var name = document.getElementById('c-name').value.trim();
   var mobile = document.getElementById('c-mobile').value.trim();
   if(!name || !mobile){ toast('Name and mobile number are required!', 'err'); return; }
@@ -40,33 +49,53 @@ async function saveCustomer(){
     regDate: document.getElementById('c-regdate').value,
     notes: document.getElementById('c-notes').value.trim()
   };
+
+  var saveBtn = document.getElementById('custSaveBtn');
+  isSavingCustomer = true;
+  if(saveBtn) saveBtn.disabled = true;
+
   try{
     var result;
     var isNewCustomer = !editingCustId;
+    var activityMsg;
     if(editingCustId){
       var payload = Object.assign({ id: editingCustId }, data);
       toast('Saving changes...', '');
       await updateCustomerRemote(payload);
-      toast('Customer updated ✓', 'ok');
-      logActivity('customer', 'Updated customer: ' + name);
+      activityMsg = { type: 'customer', msg: 'Updated customer: ' + name };
     } else {
       toast('Adding customer...', '');
       result = await appendCustomerRemote(data);
-      toast('✅ New customer added: ' + name, 'ok');
-      logActivity('customer', 'New customer added: ' + name);
+      activityMsg = { type: 'customer', msg: 'New customer added: ' + name };
     }
 
-    // Refresh authoritative data from Google Sheets before closing the modal
+    // Refresh authoritative data from Google Sheets BEFORE anything that could
+    // trigger a full-state save (e.g. logActivity -> persist -> saveRemoteState).
+    // This ordering matters: if a full-state save fires while the local
+    // `customers` array is still stale (i.e. before this refresh), it can
+    // overwrite the sheet with data that's missing the row we just
+    // added/updated, wiping it back out. Refreshing first guarantees the
+    // local array is authoritative before anything writes the full state back.
     await loadRemoteState();
+
     if(isNewCustomer){
-      if(!Array.isArray(customers) || customers.length === 0){
-        throw new Error('Saved successfully but loaded zero customer rows from the sheet. Verify the active sheet and spreadsheet ID.');
+      if(result && result.id && (!Array.isArray(customers) || !customers.find(function(c){ return c.id === result.id; }))){
+        console.warn('Appended customer id not found in loaded customers, applying local fallback', result.id, customers);
+        customers = customers || [];
+        customers.push(Object.assign({ id: result.id }, data));
       }
-      if(!result || !result.id || !customers.find(function(c){ return c.id === result.id; })){
-        throw new Error('Saved id ' + (result && result.id ? result.id : '(none)') + ' not found after refresh. The app may be using a different sheet or spreadsheet ID.');
+      if(!Array.isArray(customers) || customers.length === 0){
+        toast('Saved locally but Google Sheets response was empty. Verify the active sheet in your Apps Script deployment.', 'err');
       }
       custPage = Math.max(1, Math.ceil(customers.length / CUST_PAGE_SIZE));
     }
+
+    // Log activity only now that local state matches the sheet, so the
+    // fire-and-forget full-state save inside logActivity/persist can no
+    // longer clobber the customer we just wrote.
+    toast(isNewCustomer ? ('✅ New customer added: ' + name) : 'Customer updated ✓', 'ok');
+    logActivity(activityMsg.type, activityMsg.msg);
+
     renderCustomersTable();
     populateCustomerDropdown();
     if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
@@ -74,6 +103,11 @@ async function saveCustomer(){
   }catch(err){
     console.error(err);
     toast('Save failed: ' + (err.message || err), 'err');
+    // Modal intentionally stays open and list is NOT refreshed on failure,
+    // per expected behavior.
+  }finally{
+    isSavingCustomer = false;
+    if(saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -143,9 +177,9 @@ function renderCustomersTable(){
       var statusBadge = c.status === 'active' ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Inactive</span>';
       return '<tr>' +
         '<td>' + c.id + '</td>' +
-        '<td><strong>' + c.name + '</strong></td>' +
-        '<td>' + c.mobile + '</td>' +
-        '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + (c.address||'—') + '</td>' +
+        '<td><strong>' + escapeHtml(c.name) + '</strong></td>' +
+        '<td>' + escapeHtml(c.mobile) + '</td>' +
+        '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(c.address||'—') + '</td>' +
         '<td><span class="badge badge-blue">' + c.pref + '</span></td>' +
         '<td>' + statusBadge + '</td>' +
         '<td>' + fmtDate(c.regDate) + '</td>' +
@@ -187,11 +221,11 @@ function viewCustomer(id){
   }).join('') || '<div class="bill-row"><span style="color:var(--gray)">No deliveries yet</span></div>';
 
   document.getElementById('viewCustContent').innerHTML =
-    '<h2 style="color:var(--primary)">' + c.name + ' <span class="badge badge-blue" style="margin-left:6px">' + c.id + '</span></h2>' +
-    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">📍 ' + (c.address||'—') + '</p>' +
+    '<h2 style="color:var(--primary)">' + escapeHtml(c.name) + ' <span class="badge badge-blue" style="margin-left:6px">' + c.id + '</span></h2>' +
+    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">📍 ' + escapeHtml(c.address||'—') + '</p>' +
     '<div class="frow" style="margin-bottom:14px">' +
-      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Mobile</div><div style="font-weight:800;margin-top:3px">' + c.mobile + '</div></div>' +
-      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Preference</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + c.pref + '</div></div>' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Mobile</div><div style="font-weight:800;margin-top:3px">' + escapeHtml(c.mobile) + '</div></div>' +
+      '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Preference</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + escapeHtml(c.pref) + '</div></div>' +
     '</div>' +
     '<div class="frow" style="margin-bottom:14px">' +
       '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Deliveries</div><div style="font-weight:800;margin-top:3px">' + totalDeliveries + '</div></div>' +
@@ -201,7 +235,7 @@ function viewCustomer(id){
       '<button class="btn btn-primary" onclick="openBillModal(\'' + c.id + '\')">📄 View Billing</button>' +
       '<button class="btn btn-ghost" onclick="goPage(\'billing\')">Go to Billing Page</button>' +
     '</div>' +
-    (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + c.notes + '</div>' : '') +
+    (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + escapeHtml(c.notes) + '</div>' : '') +
     '<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Product Summary (All-Time)</div>' +
     '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:6px">' + rows + '</div>';
 

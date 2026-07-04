@@ -174,7 +174,7 @@ function renderDeliveriesTable(){
       var slotBadge = d.slot === 'Morning' ? '<span class="badge badge-amber">☀️ Morning</span>' : '<span class="badge badge-purple">🌙 Evening</span>';
       return '<tr>' +
         '<td>' + fmtDate(d.date) + '</td>' +
-        '<td><strong>' + d.custName + '</strong></td>' +
+        '<td><strong>' + escapeHtml(d.custName) + '</strong></td>' +
         '<td>' + slotBadge + '</td>' +
         '<td>' + info.icon + ' ' + d.product + ' @ ₹' + rate + '/' + info.unit + '</td>' +
         '<td>' + d.qty + ' ' + info.unit + '</td>' +
