@@ -16,7 +16,8 @@ img,canvas{max-width:100%}
 /* ── LOGIN ── */
 .login-wrap{min-height:100vh;background:linear-gradient(135deg,var(--navy),var(--primary),var(--sky));display:flex;align-items:center;justify-content:center;padding:1rem}
 .login-card{background:#fff;border-radius:20px;padding:2.5rem;width:min(420px,100%);box-shadow:0 24px 64px rgba(0,0,0,.25);text-align:center}
-.login-logo{font-size:3.5rem;margin-bottom:.5rem}
+.login-logo{font-size:0;margin-bottom:.5rem}
+.login-logo img{display:block;margin:0 auto;width:140px;height:auto;border-radius:16px;object-fit:contain}
 .login-title{font-size:1.7rem;font-weight:800;color:var(--primary);margin-bottom:.25rem}
 .login-sub{font-size:.82rem;color:var(--gray);margin-bottom:1.8rem}
 .login-err{background:#FEE2E2;color:#991B1B;border-radius:8px;padding:8px 12px;font-size:.82rem;margin-bottom:.8rem;display:none}
@@ -26,7 +27,9 @@ img,canvas{max-width:100%}
 /* ── TOPBAR ── */
 .topbar{height:58px;background:linear-gradient(135deg,var(--navy),var(--primary));color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.2)}
 .hamburger{background:rgba(255,255,255,.15);border:none;color:#fff;width:36px;height:36px;border-radius:8px;font-size:1.1rem;cursor:pointer;display:none}
-.tb-logo{font-size:1.2rem;font-weight:800;flex:1}
+.tb-logo{display:flex;align-items:center;gap:8px;font-size:1.2rem;font-weight:800;flex:1}
+.tb-logo img{display:block;height:32px;width:auto;border-radius:8px}
+.tb-logo span{line-height:1}
 .tb-right{display:flex;align-items:center;gap:10px;font-size:.82rem}
 .theme-toggle{background:rgba(255,255,255,.15);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:.95rem}
 .logout-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;padding:6px 12px;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer}
