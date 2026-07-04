@@ -42,36 +42,28 @@ async function saveCustomer(){
   };
   try{
     var result;
+    var isNewCustomer = !editingCustId;
     if(editingCustId){
       var payload = Object.assign({ id: editingCustId }, data);
       toast('Saving changes...', '');
       await updateCustomerRemote(payload);
       toast('Customer updated ✓', 'ok');
       logActivity('customer', 'Updated customer: ' + name);
-      customers = customers.map(function(c){
-        return c.id === editingCustId ? Object.assign({}, c, data) : c;
-      });
     } else {
       toast('Adding customer...', '');
       result = await appendCustomerRemote(data);
       toast('✅ New customer added: ' + name, 'ok');
       logActivity('customer', 'New customer added: ' + name);
-      if(result && result.id){
-        customers.push(Object.assign({ id: result.id }, data));
-      }
     }
 
-    closeModal('custModal');
-    // Refresh authoritative data from Google Sheets if possible
-    try{
-      await loadRemoteState();
-    }catch(err){
-      console.error('Failed to refresh data after save:', err);
-      toast('Saved but failed to refresh from sheet', 'err');
+    // Refresh authoritative data from Google Sheets before closing the modal
+    await loadRemoteState();
+    if(isNewCustomer){
+      custPage = Math.max(1, Math.ceil(customers.length / CUST_PAGE_SIZE));
     }
-
     renderCustomersTable();
     populateCustomerDropdown();
+    closeModal('custModal');
   }catch(err){
     console.error(err);
     toast('Save failed: ' + (err.message || err), 'err');
