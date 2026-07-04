@@ -68,6 +68,20 @@ function toggleCustomerStatus(id){
   renderCustomersTable();
 }
 
+function deleteCustomer(id){
+  var c = custById(id);
+  if(!c) return;
+  if(!confirm('Delete customer "' + c.name + '" and all associated deliveries?')) return;
+  customers = customers.filter(function(cust){ return cust.id !== id; });
+  deliveries = deliveries.filter(function(del){ return del.custId !== id; });
+  persist();
+  toast('Customer deleted: ' + c.name, 'err');
+  logActivity('customer', 'Deleted customer: ' + c.name);
+  renderCustomersTable();
+  if(typeof renderDeliveriesTable === 'function') renderDeliveriesTable();
+  populateCustomerDropdown();
+}
+
 function filteredCustomers(){
   var q = (document.getElementById('custSearch').value || '').toLowerCase();
   var statusF = document.getElementById('custStatusFilter').value;
@@ -103,7 +117,8 @@ function renderCustomersTable(){
         '<td>' +
           '<button class="btn-icon" onclick="viewCustomer(\'' + c.id + '\')" title="View">👁️</button> ' +
           '<button class="btn-icon" onclick="openCustModal(\'' + c.id + '\')" title="Edit">✏️</button> ' +
-          '<button class="btn-icon" onclick="toggleCustomerStatus(\'' + c.id + '\')" title="Toggle Status">' + (c.status==='active'?'🚫':'✅') + '</button>' +
+          '<button class="btn-icon" onclick="toggleCustomerStatus(\'' + c.id + '\')" title="Toggle Status">' + (c.status==='active'?'🚫':'✅') + '</button> ' +
+          '<button class="btn-icon" onclick="deleteCustomer(\'' + c.id + '\')" title="Delete">🗑️</button>' +
         '</td>' +
       '</tr>';
     }).join('');
