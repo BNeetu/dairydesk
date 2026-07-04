@@ -37,6 +37,33 @@ function getBillingRange(){
   return { from: from, to: to };
 }
 
+// Ensure html2canvas is available (used by jspdf.html). Loads from CDN if missing.
+function ensureHtml2Canvas(){
+  if(window.html2canvas) return Promise.resolve();
+  if(window._html2canvasLoading) return window._html2canvasLoading;
+  window._html2canvasLoading = new Promise(function(resolve, reject){
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = function(){
+      // html2canvas exposes global `html2canvas` function
+      if(window.html2canvas) return resolve();
+      // some CDNs set window.html2canvas differently; check common aliases
+      if(window.html2canvas || window.html2Canvas) return resolve();
+      // still not present — resolve anyway and let jspdf try, but warn
+      resolve();
+    };
+    s.onerror = function(){ reject(new Error('Failed to load html2canvas')); };
+    document.head.appendChild(s);
+  });
+  return window._html2canvasLoading;
+}
+
+// Escape text for safe HTML insertion
+function escapeHtml(str){
+  if(str === null || typeof str === 'undefined') return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 function buildCustomerBill(custId){
   var c = custById(custId);
   var range = getBillingRange();
@@ -101,8 +128,6 @@ function renderBillingPage(){
       '<div class="bill-rows">' + rows + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
         '<button class="btn btn-ghost btn-sm" style="flex:1" onclick="openBillModal(\'' + b.customer.id + '\')">📄 View Full Bill</button>' +
-        '<button class="btn btn-primary btn-sm" style="flex:1" onclick="downloadBillPDF(\'' + b.customer.id + '\')">📥 PDF</button>' +
-        '<button class="btn btn-blue btn-sm" style="flex:1" onclick="printBill(\'' + b.customer.id + '\')">🖨️ Print</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -159,32 +184,117 @@ function openBillModal(custId){
 }
 
 function downloadBillPDF(custId){
+  if(window._pdfGenerating) return toast('PDF generation in progress', 'warn');
+  window._pdfGenerating = true;
   var b = buildCustomerBill(custId);
-  var filename = 'Invoice_' + b.customer.name.replace(/ /g,'_') + '_' + b.range.from + '_to_' + b.range.to + '.pdf';
-  var container = document.createElement('div');
-  container.style.position = 'fixed'; container.style.left = '-9999px'; container.style.top = '0';
-  container.innerHTML = renderInvoiceHTML(b);
-  document.body.appendChild(container);
-  var doc = new jspdf.jsPDF('p', 'mm', 'a4');
-  doc.html(container, {
-    callback: function(doc){
-      doc.save(filename);
-      container.remove();
-      toast('PDF downloaded!', 'ok');
-    },
-    x: 10,
-    y: 10,
-    html2canvas: { scale: 1 }
-  });
+  var filename = 'billa_' + b.customer.name.replace(/ /g,'_') + '_' + b.range.from + '_to_' + b.range.to + '.pdf';
+  toast('Generating PDF…', 'info');
+
+  // Render full HTML into an offscreen iframe and wait for images to load
+  var iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed'; iframe.style.left = '-9999px'; iframe.style.top = '0'; iframe.style.width = '800px'; iframe.style.height = '1120px';
+  document.body.appendChild(iframe);
+  var idoc = iframe.contentWindow.document;
+  idoc.open();
+  idoc.write(renderInvoiceHTML(b));
+  idoc.close();
+
+  // Helper: wait for images in iframe to load or timeout
+  function waitForImages(timeoutMs){
+    return new Promise(function(resolve){
+      var imgs = Array.from(idoc.images || []);
+      if(!imgs.length) return resolve();
+      var remaining = imgs.length;
+      var timer = setTimeout(function(){ resolve(); }, timeoutMs || 3000);
+      imgs.forEach(function(im){
+        if(im.complete){ if(--remaining === 0){ clearTimeout(timer); resolve(); } }
+        else im.addEventListener('load', function(){ if(--remaining === 0){ clearTimeout(timer); resolve(); } });
+        im.addEventListener('error', function(){ if(--remaining === 0){ clearTimeout(timer); resolve(); } });
+      });
+    });
+  }
+
+  // Yield to UI and then generate PDF
+  setTimeout(function(){
+    waitForImages(4000).then(function(){
+      ensureHtml2Canvas().then(function(){
+        try{
+          // Use html2canvas to capture the rendered invoice in the iframe and build a multi-page PDF
+          var node = idoc.querySelector('main') || idoc.body;
+          html2canvas(node, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(function(canvas){
+            try{
+              var pdf = new jspdf.jsPDF('p', 'mm', 'a4');
+              var pdfWidth = 210, pdfHeight = 297; // A4 in mm
+              var margin = 10; // mm
+              var pdfInnerWidth = pdfWidth - margin*2;
+              var pxPerMm = canvas.width / pdfInnerWidth;
+              var sliceHeightPxPerPage = Math.floor((pdfHeight - margin*2) * pxPerMm);
+              var totalHeightPx = canvas.height;
+              var pageCount = Math.ceil(totalHeightPx / sliceHeightPxPerPage) || 1;
+
+              for(var i=0;i<pageCount;i++){
+                var srcY = i * sliceHeightPxPerPage;
+                var sliceH = Math.min(sliceHeightPxPerPage, totalHeightPx - srcY);
+                var tmpCanvas = document.createElement('canvas');
+                tmpCanvas.width = canvas.width;
+                tmpCanvas.height = sliceH;
+                var ctx = tmpCanvas.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,tmpCanvas.width,tmpCanvas.height);
+                ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+                var imgData = tmpCanvas.toDataURL('image/jpeg', 0.95);
+                var imgHeightMm = sliceH / pxPerMm;
+                pdf.addImage(imgData, 'JPEG', margin, margin, pdfInnerWidth, imgHeightMm);
+                if(i < pageCount - 1) pdf.addPage();
+              }
+
+              pdf.save(filename);
+              toast('PDF downloaded!', 'ok');
+            }catch(e){ console.error('Error saving PDF', e); toast('Could not save PDF', 'err'); }
+            finally{ window._pdfGenerating = false; setTimeout(function(){ try{ document.body.removeChild(iframe); }catch(e){} }, 50); }
+          }).catch(function(err){
+            console.error('html2canvas capture failed', err);
+            toast('PDF generation failed (capture)', 'err');
+            window._pdfGenerating = false; try{ document.body.removeChild(iframe); }catch(e){}
+          });
+        }catch(err){
+          console.error('PDF generation failed', err);
+          toast('PDF generation failed', 'err');
+          window._pdfGenerating = false;
+          try{ document.body.removeChild(iframe); }catch(e){}
+        }
+      }).catch(function(err){
+        console.error('Could not load html2canvas', err);
+        toast('Could not load html2canvas required for PDF', 'err');
+        window._pdfGenerating = false;
+        try{ document.body.removeChild(iframe); }catch(e){}
+      });
+    });
+  }, 80);
 }
 
 function printBill(custId){
   var b = buildCustomerBill(custId);
-  var printWindow = window.open('', '_blank');
-  printWindow.document.write(renderInvoiceHTML(b));
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(function(){ printWindow.print(); }, 300);
+  // Create a standalone HTML page in a Blob that triggers print on load.
+  var docHtml = renderInvoiceHTML(b);
+  // Append a small script to call print after load and then optionally close the tab.
+  var autoPrint = '<script>window.addEventListener("load", function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 200); });</' + 'script>';
+  var full = docHtml.replace(/<\/body>/i, autoPrint + '\n</body>');
+  try{
+    var blob = new Blob([full], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    // Open in a new tab detached from opener to avoid blocking the main app.
+    var w = window.open(url, '_blank', 'noopener');
+    // Revoke URL after a short delay
+    setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 5000);
+  }catch(err){
+    console.error('Print fallback', err);
+    // Fallback to original approach
+    var printWindow = window.open('', '_blank');
+    printWindow.document.write(docHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(function(){ try{ printWindow.print(); }catch(e){} }, 300);
+  }
 }
 
 function renderInvoiceHTML(b){
@@ -196,37 +306,37 @@ function renderInvoiceHTML(b){
     var pr = b.products[p];
     var rate = pr.rateLabel || ('₹' + (info.price || 0) + '/' + info.unit);
     return '<tr>' +
-      '<td>' + info.icon + ' ' + p + '</td>' +
-      '<td style="text-align:center">' + pr.qty.toFixed(2) + ' ' + info.unit + '</td>' +
-      '<td style="text-align:center">' + rate + '</td>' +
+      '<td>' + escapeHtml(info.icon + ' ' + p) + '</td>' +
+      '<td style="text-align:center">' + Number(pr.qty).toFixed(2) + ' ' + escapeHtml(info.unit) + '</td>' +
+      '<td style="text-align:center">' + escapeHtml(rate) + '</td>' +
       '<td style="text-align:right">' + money(pr.amount) + '</td>' +
     '</tr>';
   }).join('');
 
   var deliveryRows = b.deliveries.map(function(d){
-    return '<tr><td>' + fmtDate(d.date) + '</td><td>' + d.product + '</td><td style="text-align:center">' + d.qty.toFixed(2) + '</td><td style="text-align:right">' + money(d.amount) + '</td></tr>';
+    return '<tr><td>' + escapeHtml(fmtDate(d.date)) + '</td><td>' + escapeHtml(d.product) + '</td><td style="text-align:center">' + Number(d.qty).toFixed(2) + '</td><td style="text-align:right">' + money(d.amount) + '</td></tr>';
   }).join('');
-
-  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Invoice - ' + b.customer.name + '</title>' +
-    '<style>body{font-family:Inter,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}header img{height:56px}h1{margin:0;color:#111;font-size:20px}h2{margin:0;font-size:14px;color:#555}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{padding:8px;border:1px solid #eee}th{background:#f4f4f8;color:#111;text-align:left}tfoot td{border:none;padding-top:12px;font-weight:800}@media print{body{padding:12mm} .no-print{display:none}}</style>' +
-    '</head><body>' +
+  // Use more robust CSS for pagination and consistent rendering
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Invoice - ' + escapeHtml(b.customer.name) + '</title>' +
+    '<style>@page{size:A4;margin:12mm}body{font-family:Inter,Arial,sans-serif;color:#111;padding:0;margin:0}main{padding:24px;max-width:780px;margin:0 auto}header{margin-bottom:18px;text-align:center}header img{height:72px;display:block;margin:0 auto 8px}h1{margin:0;color:#111;font-size:20px}h2{margin:0;font-size:14px;color:#555}table{width:100%;border-collapse:collapse;margin-top:12px;page-break-inside:auto}thead{display:table-header-group}tbody{display:table-row-group}tr{page-break-inside:avoid;page-break-after:auto}th,td{padding:8px;border:1px solid #eee;font-size:12px}th{background:#f4f4f8;color:#111;text-align:left}tfoot td{border:none;padding-top:12px;font-weight:800;font-size:13px}@media print{body{padding:0} .no-print{display:none}}</style>' +
+    '</head><body><main>' +
     '<header>' +
-      '<div style="display:flex;align-items:center;gap:12px">' + (logo? '<img src="'+logo+'" alt="logo">' : '') + '<div><h1>Bhati Farms Ledger</h1><div style="font-size:12px;color:#666">Monthly Bill</div></div></div>' +
-      '<div style="text-align:right">' +
-        '<div style="font-size:12px;color:#666">Invoice Date</div><div>' + today + '</div>' +
-        '<div style="font-size:12px;color:#666;margin-top:8px">Period</div><div>' + range + '</div>' +
-      '</div>' +
+      (logo? '<img src="'+logo+'" alt="logo">' : '') +
+      '<h1>Bhati Farms Ledger</h1>' +
+      '<div style="font-size:12px;color:#666">Monthly Bill</div>' +
+      '<div style="margin-top:8px;color:#666;font-size:12px">Invoice Date: ' + escapeHtml(today) + '</div>' +
+      '<div style="margin-top:4px;color:#666;font-size:12px">Period: ' + escapeHtml(fmtDateLong(b.range.from)) + ' to ' + escapeHtml(fmtDateLong(b.range.to)) + '</div>' +
     '</header>' +
     '<section>' +
-      '<div style="display:flex;justify-content:space-between;gap:12px">' +
-        '<div><strong>Customer</strong><div>' + b.customer.name + '</div><div style="color:#666">' + b.customer.id + '</div></div>' +
-        '<div style="text-align:right"><strong>Mobile</strong><div>' + (b.customer.mobile || '—') + '</div><div style="color:#666">Payment: —</div></div>' +
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">' +
+        '<div><strong>Customer</strong><div>' + escapeHtml(b.customer.name) + '</div><div style="color:#666">' + escapeHtml(b.customer.id) + '</div></div>' +
+        '<div style="text-align:right"><strong>Mobile</strong><div>' + escapeHtml(b.customer.mobile || '—') + '</div><div style="color:#666">Payment: —</div></div>' +
       '</div>' +
     '</section>' +
     '<table aria-label="Products"><thead><tr><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amount</th></tr></thead><tbody>' + products + '</tbody><tfoot><tr><td colspan="3" style="text-align:right">Grand Total</td><td style="text-align:right">' + money(b.grandTotal) + '</td></tr></tfoot></table>' +
     '<h3 style="margin-top:18px">Delivery Details</h3>' +
     '<table aria-label="Deliveries"><thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>' + deliveryRows + '</tbody></table>' +
     '<footer style="margin-top:18px;text-align:center;color:#666">Thank you for your business.</footer>' +
-    '</body></html>';
+    '</main></body></html>';
   return html;
 }

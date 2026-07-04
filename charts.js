@@ -39,6 +39,13 @@ function baseLineOptions(c){
 // ── DASHBOARD CHARTS ──────────────────────────────────
 function renderDashCharts(){
   var c = chartColors();
+  var actualToday = todayStr();
+  var latest = latestDataDate();
+  var chartDate = actualToday;
+  var todayDels = deliveriesOn(actualToday);
+  if(!todayDels.length && latest !== actualToday){
+    chartDate = latest;
+  }
 
   // Revenue trend - last 14 days
   var labels = [], revData = [];
@@ -48,21 +55,38 @@ function renderDashCharts(){
     labels.push(d.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
     revData.push(sumAmount(deliveriesOn(ds)));
   }
+  var hasRevenue = revData.some(function(v){ return v > 0; });
+  var lineOptions = baseLineOptions(c);
+  lineOptions.plugins.title = {
+    display: !hasRevenue,
+    text: 'No revenue recorded for the last 14 days',
+    color: c.text,
+    font: { size: 14 }
+  };
+  lineOptions.plugins.tooltip = { enabled: hasRevenue };
   makeChart('chartRevTrend', {
     type:'line',
-    data:{ labels:labels, datasets:[{ label:'Revenue (₹)', data:revData, borderColor:c.palette[0], backgroundColor:c.palette[0]+'22', tension:.35, fill:true }] },
-    options: baseLineOptions(c)
+    data:{ labels:labels, datasets:[{ label:'Revenue (₹)', data:revData, borderColor:c.palette[0], backgroundColor:c.palette[0]+'22', tension:.35, fill:true, pointRadius: hasRevenue ? 3 : 0 }] },
+    options: lineOptions
   });
 
-  // Today morning vs evening
-  var today = todayStr();
-  var todayDels = deliveriesOn(today);
-  var mAmt = sumAmount(todayDels.filter(function(d){ return d.slot === 'Morning'; }));
-  var eAmt = sumAmount(todayDels.filter(function(d){ return d.slot === 'Evening'; }));
+  // Today / latest day morning vs evening
+  var dayDels = deliveriesOn(chartDate);
+  var mAmt = sumAmount(dayDels.filter(function(d){ return d.slot === 'Morning'; }));
+  var eAmt = sumAmount(dayDels.filter(function(d){ return d.slot === 'Evening'; }));
+  var hasShiftData = (mAmt + eAmt) > 0;
   makeChart('chartTodaySlot', {
     type:'doughnut',
     data:{ labels:['Morning','Evening'], datasets:[{ data:[mAmt, eAmt], backgroundColor:[c.palette[2], c.palette[4]] }] },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ color:c.text } } } }
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        title:{ display: !hasShiftData, text: 'No morning/evening deliveries for ' + (chartDate === actualToday ? 'today' : fmtDate(chartDate)), color: c.text, font: { size: 14 } },
+        legend:{ position:'bottom', labels:{ color:c.text } },
+        tooltip:{ enabled: hasShiftData }
+      }
+    }
   });
 }
 

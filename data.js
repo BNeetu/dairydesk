@@ -130,8 +130,17 @@ function deleteCustomerRemote(custId){
 }
 function uid(prefix){ return (prefix||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
 function todayStr(){ return new Date().toISOString().split('T')[0]; }
-function fmtDate(d){ if(!d) return ''; var p = d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
-function fmtDateLong(d){ var dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
+function fmtDate(d){
+  if(!d) return '';
+  try{
+    // Accept YYYY-MM-DD or full ISO datetime (YYYY-MM-DDTHH:MM:SSZ)
+    var s = String(d).split('T')[0];
+    var p = s.split('-');
+    if(p.length < 3) return String(d);
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }catch(e){ return String(d); }
+}
+function fmtDateLong(d){ var dt = new Date(String(d).split('T')[0] + 'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
 function money(n){ return '₹' + (Math.round((n||0)*100)/100).toLocaleString('en-IN'); }
 
 // Customers must be loaded from Google Sheets (single source of truth).

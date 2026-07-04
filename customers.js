@@ -69,6 +69,7 @@ async function saveCustomer(){
     }
     renderCustomersTable();
     populateCustomerDropdown();
+    if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
     closeModal('custModal');
   }catch(err){
     console.error(err);
@@ -87,6 +88,7 @@ async function toggleCustomerStatus(id){
     await loadRemoteState();
     toast(c.name + ' marked ' + newStatus, newStatus === 'active' ? 'ok' : '');
     renderCustomersTable();
+    if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
   }catch(err){
     console.error(err);
     toast('Status update failed: ' + (err.message || err), 'err');
@@ -106,6 +108,7 @@ async function deleteCustomer(id){
     logActivity('customer', 'Deleted customer: ' + c.name);
     renderCustomersTable();
     if(typeof renderDeliveriesTable === 'function') renderDeliveriesTable();
+    if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
     populateCustomerDropdown();
   }catch(err){
     console.error(err);

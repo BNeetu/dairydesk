@@ -107,6 +107,7 @@ function saveDelivery(){
   logActivity('delivery', 'Delivery recorded: ' + c.name + ' (' + slot + ') — ' + money(totalAmt));
   renderDeliveriesTable();
   if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
+  if(document.getElementById('page-reports').classList.contains('active')) renderReportContent();
 }
 
 function deleteDelivery(id){
@@ -115,6 +116,7 @@ function deleteDelivery(id){
   persist();
   toast('Delivery deleted', 'err');
   renderDeliveriesTable();
+  if(document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
 }
 
 function initDeliveryFilters(){

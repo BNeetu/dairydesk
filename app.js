@@ -1,9 +1,22 @@
 // ══════════════════════════════════════════════════════
 //  REPORTS MODULE
-// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════function toIsoDate(d){
+  try{
+    var s = d || '';
+    s = String(s).trim();
+    if(!s) return todayStr();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if(/^\d{4}-\d{2}$/.test(s)) return s + '-01';
+    var dt = new Date(s);
+    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    dt = new Date(s + 'T00:00:00');
+    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    return todayStr();
+  }catch(e){ return todayStr(); }
+}
 function renderReportContent(){
   var type = document.getElementById('reportType').value;
-  var dateVal = document.getElementById('reportDate').value || todayStr();
+  var dateVal = toIsoDate(document.getElementById('reportDate').value || todayStr());
   var el = document.getElementById('reportContent');
 
   if(type === 'daily')   el.innerHTML = buildDailyReport(dateVal);
@@ -112,7 +125,7 @@ function buildBuyersReport(date){
 // ── EXPORTS ──────────────────────────────────────────
 function exportReportExcel(){
   var type = document.getElementById('reportType').value;
-  var date = document.getElementById('reportDate').value || todayStr();
+  var date = toIsoDate(document.getElementById('reportDate').value || todayStr());
   var wb = XLSX.utils.book_new();
   var data = [];
 
@@ -262,62 +275,8 @@ function updatePrice(product, val){
   persist();
 }
 
-function exportFullBackup(){
-  var wb = XLSX.utils.book_new();
-
-  var custData = customers.length ? customers.map(function(c){
-    return { ID: c.id, Name: c.name, Mobile: c.mobile, Address: c.address, Preference: c.pref, Status: c.status, RegDate: c.regDate, Notes: c.notes };
-  }) : [{Note:'No customers'}];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(custData), 'Customers');
-
-  var uniqueDates = Array.from(new Set(deliveries.map(function(d){ return d.date; }))).sort();
-  var custMap = {};
-  deliveries.forEach(function(d){
-    if(!custMap[d.custName]) custMap[d.custName] = { totalQty: 0, totalAmt: 0, dates: {} };
-    if(!custMap[d.custName].dates[d.date]) custMap[d.custName].dates[d.date] = [];
-    custMap[d.custName].dates[d.date].push(d);
-    custMap[d.custName].totalQty += d.qty;
-    custMap[d.custName].totalAmt += d.amount;
-  });
-
-  var delData = [];
-  if(Object.keys(custMap).length === 0){
-    delData = [{Note:'No deliveries'}];
-  } else {
-    delData = Object.keys(custMap).map(function(cName){
-      var row = { Customer: cName };
-      uniqueDates.forEach(function(dt){
-        var dels = custMap[cName].dates[dt];
-        var colName = dt.split('-')[2] + '/' + dt.split('-')[1];
-        if(dels && dels.length){
-          var slots = {};
-          dels.forEach(function(d){
-            var key = d.slot.charAt(0);
-            if(d.product !== 'Milk') key += '(' + d.product.substring(0,2) + ')';
-            if(!slots[key]) slots[key] = 0;
-            slots[key] += d.qty;
-          });
-          row[colName] = Object.keys(slots).map(function(k){ return k + '-' + slots[k]; }).join(',');
-        } else {
-          row[colName] = '';
-        }
-      });
-      row['Monthly Total Qty'] = custMap[cName].totalQty;
-      row['Monthly Total Amt'] = custMap[cName].totalAmt;
-      return row;
-    });
-  }
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(delData), 'Deliveries');
-
-  var pricingData = Object.keys(PRODUCTS).map(function(p){
-    var info = PRODUCTS[p];
-    return { Product: p, Unit: info.unit, Price: info.price, Step: info.step, Note: info.note || '' };
-  });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pricingData), 'Pricing');
-
-  XLSX.writeFile(wb, 'DairyDesk_FullBackup_' + todayStr() + '.xlsx');
-  toast('Excel Backup downloaded!', 'ok');
-}
+/* exportFullBackup removed — Data Management feature deprecated */
+function exportFullBackup(){ console.warn('exportFullBackup is deprecated and removed.'); }
 
 
 // ══════════════════════════════════════════════════════
@@ -329,7 +288,10 @@ function doLogin(){
   if((u === 'admin' || u === 'dairy' || u === 'owner') && p === 'dairy123'){
     document.getElementById('loginWrap').style.display = 'none';
     document.getElementById('appShell').style.display = 'block';
-    document.getElementById('navUser').textContent = '👤 ' + document.getElementById('loginU').value.trim();
+    var displayName = document.getElementById('loginU').value.trim();
+    document.getElementById('navUser').textContent = '👤 ' + displayName;
+    // Persist login state so refresh doesn't redirect to login
+    try{ localStorage.setItem('dd_loggedIn', '1'); localStorage.setItem('dd_user', displayName); }catch(e){}
     initApp();
   } else {
     document.getElementById('loginErr').style.display = 'block';
@@ -338,7 +300,21 @@ function doLogin(){
 function doLogout(){
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('loginWrap').style.display = 'flex';
+  try{ localStorage.removeItem('dd_loggedIn'); localStorage.removeItem('dd_user'); }catch(e){}
 }
+
+// Preserve session across refresh: if logged-in flag present, show app immediately
+window.addEventListener('load', function(){
+  try{
+    if(localStorage.getItem('dd_loggedIn')){
+      var name = localStorage.getItem('dd_user') || 'Admin';
+      document.getElementById('loginWrap').style.display = 'none';
+      document.getElementById('appShell').style.display = 'block';
+      document.getElementById('navUser').textContent = '👤 ' + name;
+      initApp();
+    }
+  }catch(e){}
+});
 
 // ══════════════════════════════════════════════════════
 //  THEME
