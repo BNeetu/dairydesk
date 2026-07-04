@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DairyDesk — Delivery & Billing Manager</title>
+<title>Bhati Farms Ledger — Delivery & Billing Manager</title>
+<link rel="icon" href="logo.png" type="image/png">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -15,9 +16,9 @@
 <!-- ════════════════════ LOGIN ════════════════════ -->
 <div id="loginWrap" class="login-wrap">
   <div class="login-card">
-    <div class="login-logo">🐄</div>
-    <h1 class="login-title">DairyDesk</h1>
-    <p class="login-sub">Delivery, Billing &amp; Manager for Dairy Businesses</p>
+    <div class="login-logo"><img src="logo.png" alt="Bhati Farms Ledger logo"></div>
+    <h1 class="login-title">Bhati Farms Ledger</h1>
+    <p class="login-sub">Delivery, Billing &amp; Ledger Manager for Dairy Businesses</p>
     <div class="fg"><label>Username</label>
       <input id="loginU" value="admin" placeholder="Username" oninput="document.getElementById('loginErr').style.display='none'">
     </div>
@@ -28,8 +29,7 @@
     </div>
     <div id="loginErr" class="login-err">❌ Wrong credentials. Try: admin / dairy123</div>
     <button class="btn btn-primary btn-lg" style="width:100%;margin-top:.5rem" onclick="doLogin()">🔓 Login to Dashboard</button>
-    <p class="login-tip">Username: <strong>admin</strong> &nbsp;|&nbsp; Password: <strong>dairy123</strong></p>
-    <div class="login-footer">🐄 DairyDesk — Admin Console</div>
+    <div class="login-footer">🐄 Bhati Farms Ledger — Admin Console</div>
   </div>
 </div>
 
@@ -39,7 +39,7 @@
   <!-- TOP BAR -->
   <header class="topbar">
     <button class="hamburger" onclick="toggleSidebar()">☰</button>
-    <div class="tb-logo">🐄 DairyDesk</div>
+    <div class="tb-logo"><img src="logo.png" alt="Bhati Farms Ledger logo"><span>Bhati Farms Ledger</span></div>
     <div class="tb-right">
       <button class="theme-toggle" onclick="toggleDarkMode()" id="themeBtn">🌙</button>
       <span id="navUser">👤 Admin</span>
