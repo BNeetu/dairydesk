@@ -73,15 +73,50 @@ function sheetToObjects(sheetName, headers){
   var sh = ss.getSheetByName(sheetName);
   if(!sh) return [];
   var vals = sh.getDataRange().getValues();
-  if(vals.length < 2) return [];
-  var rows = vals.slice(1);
+  if(vals.length < 1) return [];
+
+  var headerRow = vals[0];
+  var hasHeaders = headers.every(function(h,i){ return normalizeHeaderCell(headerRow[i]) === normalizeHeaderCell(h); });
+  var rows;
+  if(hasHeaders){
+    rows = vals.slice(1);
+  } else if(isDataRow(headerRow, headers)){
+    rows = vals;
+  } else if(vals.length > 1 && isDataRow(vals[1], headers)){
+    rows = vals.slice(1);
+  } else {
+    return [];
+  }
+
   return rows.map(function(r){
     var o = {};
     for(var i=0;i<headers.length;i++){
-      o[headers[i]] = r[i] === '' ? '' : r[i];
+      var value = r[i];
+      if(value === ''){
+        o[headers[i]] = '';
+      } else if(value instanceof Date){
+        o[headers[i]] = Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      } else {
+        o[headers[i]] = value;
+      }
     }
     return o;
   });
+}
+
+function normalizeHeaderCell(value){
+  return String(value || '').trim().toLowerCase().replace(/[\.\s\-_]/g,'');
+}
+
+function isDataRow(row, headers){
+  if(!Array.isArray(row) || row.length < 1) return false;
+  var first = String(row[0] || '').trim();
+  if(first.toUpperCase().startsWith('CUST-') || first.toUpperCase().startsWith('DEL-')) return true;
+  if(first === '') return false;
+  var looksLikeHeader = headers.every(function(h,i){
+    return normalizeHeaderCell(row[i]) === normalizeHeaderCell(h);
+  });
+  return !looksLikeHeader;
 }
 
 function objectFromPricing(rows){
@@ -268,12 +303,15 @@ function saveFullState(payload){
 // ---------- util ----------
 function ensureHeaders(sheet, headers){
   var firstRow = sheet.getRange(1,1,1,headers.length).getValues()[0];
-  var missing = false;
-  for(var i=0;i<headers.length;i++){
-    if(String(firstRow[i]||'').trim() !== headers[i]) missing = true;
+  var hasHeaders = headers.every(function(h,i){ return String(firstRow[i]||'').trim() === h; });
+  if(hasHeaders) return;
+
+  if(isDataRow(firstRow, headers)){
+    sheet.insertRowBefore(1);
+    sheet.getRange(1,1,headers.length).setValues([headers]);
+    return;
   }
-  if(missing){
-    sheet.clearContents();
-    sheet.appendRow(headers);
-  }
+
+  sheet.clearContents();
+  sheet.appendRow(headers);
 }

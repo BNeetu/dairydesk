@@ -84,6 +84,8 @@ img,canvas{max-width:100%}
 .btn-primary:hover{background:var(--primary-h);transform:translateY(-1px)}
 .btn-ghost{background:var(--lgray);border:1px solid var(--border);color:var(--dark)}
 .btn-ghost:hover{background:var(--border)}
+.btn-blue{background:var(--navy);color:#fff}
+.btn-blue:hover{opacity:.95;transform:translateY(-1px)}
 .btn-red{background:var(--red);color:#fff}
 .btn-red:hover{opacity:.9}
 .btn-sm{padding:6px 12px;font-size:.78rem}
@@ -130,8 +132,11 @@ img,canvas{max-width:100%}
 
 /* ── DELIVERY PRODUCT ROWS ── */
 .prod-rows{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
-.prod-row{display:grid;grid-template-columns:1.3fr .8fr auto auto;gap:8px;align-items:center;background:var(--lgray);border-radius:9px;padding:9px 11px}
+.prod-row{display:grid;grid-template-columns:1.3fr .8fr .8fr auto auto;gap:8px;align-items:center;background:var(--lgray);border-radius:9px;padding:9px 11px}
+.prod-row-header{background:transparent;border:none;padding:0 0 4px 0;color:var(--gray);font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.01em}
+.prod-row-header div{padding:0;}
 .prod-row select,.prod-row input{padding:7px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:.84rem;outline:none;background:var(--card);color:var(--dark)}
+.prod-row .prow-rate{max-width:110px}
 .prod-row .row-amt{font-weight:800;color:var(--primary);font-size:.86rem;text-align:right;min-width:60px}
 .prod-row .row-del{background:var(--red);color:#fff;border:none;width:26px;height:26px;border-radius:6px;cursor:pointer;font-weight:800}
 .delivery-total-bar{display:flex;justify-content:space-between;align-items:center;background:var(--lgray);border-radius:9px;padding:12px 16px;margin-top:10px;font-weight:700;color:var(--dark)}

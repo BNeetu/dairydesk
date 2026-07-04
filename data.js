@@ -2,15 +2,19 @@
 //  PRODUCTS & PRICING (single source of truth)
 // ══════════════════════════════════════════════════════
 // Milk: per litre | Curd: per 500g unit | Buttermilk: per litre | Ghee: per kg
-var PRODUCTS = {
+var DEFAULT_PRODUCTS = {
   Milk:       { unit: 'L',    price: 50,   step: 0.5, icon: '🥛' },
   Curd:       { unit: 'unit', price: 60,   step: 1,   icon: '🍶', note:'500g per unit' },
   Buttermilk: { unit: 'L',    price: 30,   step: 0.5, icon: '🥤' },
   Ghee:       { unit: 'kg',   price: 1800, step: 0.25,icon: '✨' },
 };
+var PRODUCTS = Object.assign({}, DEFAULT_PRODUCTS);
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function calcAmount(product, qty){
+  if(!product || !PRODUCTS[product] || typeof PRODUCTS[product].price !== 'number'){
+    return 0;
+  }
   return Math.round(PRODUCTS[product].price * qty * 100) / 100;
 }
 
@@ -62,7 +66,9 @@ function loadRemoteState(){
       deliveries = data.deliveries;
       activityLog = Array.isArray(data.activityLog) ? data.activityLog : activityLog;
       currentTheme = data.currentTheme || currentTheme;
-      if(data.pricing && typeof data.pricing === 'object') PRODUCTS = data.pricing;
+      if(data.pricing && typeof data.pricing === 'object' && Object.keys(data.pricing).length){
+        PRODUCTS = Object.assign({}, DEFAULT_PRODUCTS, data.pricing);
+      }
       persistLocalOnly();
       return data;
     });

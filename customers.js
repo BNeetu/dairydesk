@@ -59,6 +59,12 @@ async function saveCustomer(){
     // Refresh authoritative data from Google Sheets before closing the modal
     await loadRemoteState();
     if(isNewCustomer){
+      if(!Array.isArray(customers) || customers.length === 0){
+        throw new Error('Saved successfully but loaded zero customer rows from the sheet. Verify the active sheet and spreadsheet ID.');
+      }
+      if(!result || !result.id || !customers.find(function(c){ return c.id === result.id; })){
+        throw new Error('Saved id ' + (result && result.id ? result.id : '(none)') + ' not found after refresh. The app may be using a different sheet or spreadsheet ID.');
+      }
       custPage = Math.max(1, Math.ceil(customers.length / CUST_PAGE_SIZE));
     }
     renderCustomersTable();
@@ -187,6 +193,10 @@ function viewCustomer(id){
     '<div class="frow" style="margin-bottom:14px">' +
       '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Deliveries</div><div style="font-weight:800;margin-top:3px">' + totalDeliveries + '</div></div>' +
       '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Billed (All-Time)</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + money(totalAmount) + '</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;margin-bottom:14px">' +
+      '<button class="btn btn-primary" onclick="openBillModal(\'' + c.id + '\')">📄 View Billing</button>' +
+      '<button class="btn btn-ghost" onclick="goPage(\'billing\')">Go to Billing Page</button>' +
     '</div>' +
     (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + c.notes + '</div>' : '') +
     '<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Product Summary (All-Time)</div>' +

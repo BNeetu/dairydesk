@@ -3,6 +3,8 @@
 // ══════════════════════════════════════════════════════
 function initBillMonths(){
   var sel = document.getElementById('billMonth');
+  var from = document.getElementById('billFrom');
+  var to = document.getElementById('billTo');
   if(sel.options.length > 1) return;
   sel.innerHTML = '';
   var now = new Date();
@@ -15,28 +17,62 @@ function initBillMonths(){
     if(i === 0) opt.selected = true;
     sel.appendChild(opt);
   }
-  sel.onchange = renderBillingPage;
+  sel.onchange = function(){
+    var month = sel.value;
+    from.value = month + '-01';
+    to.value = month + '-' + String(new Date(month.split('-')[0], parseInt(month.split('-')[1]), 0).getDate()).padStart(2,'0');
+    renderBillingPage();
+  };
+  var today = new Date();
+  var month = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0');
+  sel.value = month;
+  from.value = month + '-01';
+  to.value = month + '-' + String(new Date(today.getFullYear(), today.getMonth()+1, 0).getDate()).padStart(2,'0');
+  renderBillingPage();
 }
 
-function buildCustomerBill(custId, month){
+function getBillingRange(){
+  var from = document.getElementById('billFrom').value;
+  var to = document.getElementById('billTo').value;
+  return { from: from, to: to };
+}
+
+function buildCustomerBill(custId){
   var c = custById(custId);
-  var dels = deliveries.filter(function(d){ return d.custId === custId && d.date.startsWith(month); });
+  var range = getBillingRange();
+  var dels = deliveries.filter(function(d){
+    return d.custId === custId && d.date >= range.from && d.date <= range.to;
+  });
   var prodMap = {};
   var grandTotal = 0;
   dels.forEach(function(d){
-    if(!prodMap[d.product]) prodMap[d.product] = { qty:0, amount:0 };
+    if(!prodMap[d.product]) prodMap[d.product] = { qty:0, amount:0, deliveries: [], rates: {} };
     prodMap[d.product].qty += d.qty;
     prodMap[d.product].amount += d.amount;
+    if(typeof d.rate === 'number') prodMap[d.product].rates[d.rate] = true;
+    prodMap[d.product].deliveries.push(d);
     grandTotal += d.amount;
   });
-  return { customer:c, month:month, deliveries:dels, products:prodMap, grandTotal: Math.round(grandTotal*100)/100 };
+  Object.keys(prodMap).forEach(function(p){
+    var entry = prodMap[p];
+    var rateKeys = Object.keys(entry.rates).map(function(r){ return parseFloat(r); }).sort(function(a,b){ return a-b; });
+    if(rateKeys.length === 1){
+      entry.rateLabel = '₹' + rateKeys[0] + '/' + (PRODUCTS[p] ? PRODUCTS[p].unit : 'unit');
+    } else if(rateKeys.length > 1) {
+      entry.rateLabel = 'Varies';
+    } else {
+      entry.rateLabel = '₹' + (PRODUCTS[p] ? PRODUCTS[p].price : 0) + '/' + (PRODUCTS[p] ? PRODUCTS[p].unit : 'unit');
+    }
+  });
+  return { customer:c, range: range, deliveries:dels, products:prodMap, grandTotal: Math.round(grandTotal*100)/100 };
 }
 
 function renderBillingPage(){
   var month = document.getElementById('billMonth').value;
   if(!month) return;
 
-  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id, month); })
+  var range = getBillingRange();
+  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id); })
     .filter(function(b){ return b.deliveries.length > 0; });
 
   var totalRevenue = bills.reduce(function(s,b){ return s + b.grandTotal; }, 0);
@@ -47,15 +83,15 @@ function renderBillingPage(){
 
   var grid = document.getElementById('billGrid');
   if(!bills.length){
-    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="icon">💰</span><p>No deliveries found for ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</p></div>';
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><span class="icon">💰</span><p>No deliveries found for ' + range.from + ' to ' + range.to + '</p></div>';
     return;
   }
 
   grid.innerHTML = bills.map(function(b){
     var rows = Object.keys(b.products).map(function(p){
-      var info = PRODUCTS[p];
+      var info = PRODUCTS[p] || { icon:'', unit:'' };
       var pr = b.products[p];
-      return '<div class="bill-row"><span>' + info.icon + ' ' + p + ' — ' + pr.qty.toFixed(2) + ' ' + info.unit + ' × ₹' + info.price + '</span><strong>' + money(pr.amount) + '</strong></div>';
+      return '<div class="bill-row"><span>' + info.icon + ' ' + p + ' — ' + pr.qty.toFixed(2) + ' ' + info.unit + ' × ' + pr.rateLabel + '</span><strong>' + money(pr.amount) + '</strong></div>';
     }).join('');
     return '<div class="bill-card">' +
       '<div class="bill-card-top">' +
@@ -63,7 +99,11 @@ function renderBillingPage(){
         '<div class="bill-total">' + money(b.grandTotal) + '</div>' +
       '</div>' +
       '<div class="bill-rows">' + rows + '</div>' +
-      '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="openBillModal(\'' + b.customer.id + '\',\'' + month + '\')">📄 View Full Bill</button>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+        '<button class="btn btn-ghost btn-sm" style="flex:1" onclick="openBillModal(\'' + b.customer.id + '\')">📄 View Full Bill</button>' +
+        '<button class="btn btn-primary btn-sm" style="flex:1" onclick="downloadBillPDF(\'' + b.customer.id + '\')">📥 PDF</button>' +
+        '<button class="btn btn-blue btn-sm" style="flex:1" onclick="printBill(\'' + b.customer.id + '\')">🖨️ Print</button>' +
+      '</div>' +
     '</div>';
   }).join('');
 }
@@ -76,67 +116,117 @@ function generateAllBills(){
   renderBillingPage();
 }
 
-function openBillModal(custId, month){
-  var b = buildCustomerBill(custId, month);
-  var mn = MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0];
+function openBillModal(custId){
+  var b = buildCustomerBill(custId);
+  var range = b.range.from + ' to ' + b.range.to;
   var rows = Object.keys(b.products).map(function(p){
-    var info = PRODUCTS[p];
+    var info = PRODUCTS[p] || { icon:'', unit:'' };
     var pr = b.products[p];
     return '<tr><td>' + info.icon + ' ' + p + '</td><td style="text-align:center">' + pr.qty.toFixed(2) + ' ' + info.unit + '</td>' +
-      '<td style="text-align:center">₹' + info.price + '/' + info.unit + '</td><td style="text-align:right;font-weight:800">' + money(pr.amount) + '</td></tr>';
+      '<td style="text-align:center">' + pr.rateLabel + '</td><td style="text-align:right;font-weight:800">' + money(pr.amount) + '</td></tr>';
+  }).join('');
+
+  var deliveryRows = b.deliveries.map(function(d){
+    return '<tr><td>' + d.date + '</td><td>' + d.product + '</td><td style="text-align:center">' + d.qty.toFixed(2) + '</td>' +
+      '<td style="text-align:right">' + money(d.amount) + '</td></tr>';
   }).join('');
 
   document.getElementById('billModalContent').innerHTML =
-    '<h2 style="color:var(--primary);margin-bottom:4px">Monthly Bill</h2>' +
-    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">' + b.customer.name + ' (' + b.customer.id + ') · ' + mn + '</p>' +
+    '<h2 style="color:var(--primary);margin-bottom:4px">Customer Invoice</h2>' +
+    '<p style="color:var(--gray);font-size:.85rem;margin-bottom:16px">' + b.customer.name + ' (' + b.customer.id + ') · Period: ' + range + '</p>' +
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">' +
+      '<div><strong>Customer</strong><div>' + b.customer.name + '</div></div>' +
+      '<div><strong>Customer ID</strong><div>' + b.customer.id + '</div></div>' +
+      '<div><strong>Mobile</strong><div>' + (b.customer.mobile || '—') + '</div></div>' +
+    '</div>' +
     '<table class="data-table" style="margin-bottom:14px">' +
       '<thead><tr><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amount</th></tr></thead>' +
       '<tbody>' + rows + '</tbody>' +
     '</table>' +
-    '<div class="delivery-total-bar"><span>Grand Total</span><strong>' + money(b.grandTotal) + '</strong></div>' +
+    '<div class="delivery-total-bar" style="margin-bottom:18px"><span>Grand Total</span><strong>' + money(b.grandTotal) + '</strong></div>' +
+    '<h3 style="margin-bottom:8px">Delivery Details</h3>' +
+    '<table class="data-table" style="margin-bottom:14px">' +
+      '<thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead>' +
+      '<tbody>' + deliveryRows + '</tbody>' +
+    '</table>' +
     '<div style="display:flex;gap:8px;margin-top:14px">' +
       '<button class="btn btn-ghost" style="flex:1" onclick="closeModal(\'billModal\')">Close</button>' +
-      '<button class="btn btn-primary" style="flex:1" onclick="downloadBillPDF(\'' + custId + '\',\'' + month + '\')">📄 Download PDF</button>' +
+      '<button class="btn btn-primary" style="flex:1" onclick="downloadBillPDF(\'' + custId + '\')">📄 Download PDF</button>' +
+      '<button class="btn btn-blue" style="flex:1" onclick="printBill(\'' + custId + '\')">🖨️ Print Bill</button>' +
     '</div>';
 
   openModal('billModal');
 }
 
-function downloadBillPDF(custId, month){
-  var b = buildCustomerBill(custId, month);
-  var mn = MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0];
-  var doc = new jspdf.jsPDF();
-  doc.setFontSize(18); doc.setTextColor(79,70,229);
-  doc.text('DairyDesk - Monthly Bill', 14, 18);
-  doc.setFontSize(11); doc.setTextColor(60,60,60);
-  doc.text(b.customer.name + ' (' + b.customer.id + ')', 14, 28);
-  doc.text('Period: ' + mn, 14, 35);
-  doc.text('Mobile: ' + b.customer.mobile, 14, 42);
-
-  var y = 54;
-  doc.setFontSize(10); doc.setTextColor(255,255,255);
-  doc.setFillColor(79,70,229);
-  doc.rect(14, y-6, 182, 8, 'F');
-  doc.text('Product', 18, y);
-  doc.text('Qty', 100, y);
-  doc.text('Rate', 130, y);
-  doc.text('Amount', 165, y);
-
-  doc.setTextColor(40,40,40);
-  Object.keys(b.products).forEach(function(p){
-    y += 9;
-    var info = PRODUCTS[p];
-    var pr = b.products[p];
-    doc.text(p, 18, y);
-    doc.text(pr.qty.toFixed(2) + ' ' + info.unit, 100, y);
-    doc.text('Rs.' + info.price, 130, y);
-    doc.text('Rs.' + pr.amount.toFixed(2), 165, y);
+function downloadBillPDF(custId){
+  var b = buildCustomerBill(custId);
+  var filename = 'Invoice_' + b.customer.name.replace(/ /g,'_') + '_' + b.range.from + '_to_' + b.range.to + '.pdf';
+  var container = document.createElement('div');
+  container.style.position = 'fixed'; container.style.left = '-9999px'; container.style.top = '0';
+  container.innerHTML = renderInvoiceHTML(b);
+  document.body.appendChild(container);
+  var doc = new jspdf.jsPDF('p', 'mm', 'a4');
+  doc.html(container, {
+    callback: function(doc){
+      doc.save(filename);
+      container.remove();
+      toast('PDF downloaded!', 'ok');
+    },
+    x: 10,
+    y: 10,
+    html2canvas: { scale: 1 }
   });
+}
 
-  y += 14;
-  doc.setFontSize(13); doc.setTextColor(79,70,229);
-  doc.text('Grand Total: Rs.' + b.grandTotal.toFixed(2), 14, y);
+function printBill(custId){
+  var b = buildCustomerBill(custId);
+  var printWindow = window.open('', '_blank');
+  printWindow.document.write(renderInvoiceHTML(b));
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(function(){ printWindow.print(); }, 300);
+}
 
-  doc.save('Bill_' + b.customer.name.replace(/ /g,'_') + '_' + month + '.pdf');
-  toast('PDF downloaded!', 'ok');
+function renderInvoiceHTML(b){
+  var logo = 'logo.png';
+  var today = new Date().toLocaleDateString('en-IN');
+  var range = b.range.from + ' to ' + b.range.to;
+  var products = Object.keys(b.products).map(function(p){
+    var info = PRODUCTS[p] || { icon:'', unit:'' };
+    var pr = b.products[p];
+    var rate = pr.rateLabel || ('₹' + (info.price || 0) + '/' + info.unit);
+    return '<tr>' +
+      '<td>' + info.icon + ' ' + p + '</td>' +
+      '<td style="text-align:center">' + pr.qty.toFixed(2) + ' ' + info.unit + '</td>' +
+      '<td style="text-align:center">' + rate + '</td>' +
+      '<td style="text-align:right">' + money(pr.amount) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var deliveryRows = b.deliveries.map(function(d){
+    return '<tr><td>' + fmtDate(d.date) + '</td><td>' + d.product + '</td><td style="text-align:center">' + d.qty.toFixed(2) + '</td><td style="text-align:right">' + money(d.amount) + '</td></tr>';
+  }).join('');
+
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Invoice - ' + b.customer.name + '</title>' +
+    '<style>body{font-family:Inter,Arial,sans-serif;color:#111;padding:24px;max-width:800px;margin:0 auto}header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}header img{height:56px}h1{margin:0;color:#111;font-size:20px}h2{margin:0;font-size:14px;color:#555}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{padding:8px;border:1px solid #eee}th{background:#f4f4f8;color:#111;text-align:left}tfoot td{border:none;padding-top:12px;font-weight:800}@media print{body{padding:12mm} .no-print{display:none}}</style>' +
+    '</head><body>' +
+    '<header>' +
+      '<div style="display:flex;align-items:center;gap:12px">' + (logo? '<img src="'+logo+'" alt="logo">' : '') + '<div><h1>Bhati Farms Ledger</h1><div style="font-size:12px;color:#666">Monthly Bill</div></div></div>' +
+      '<div style="text-align:right">' +
+        '<div style="font-size:12px;color:#666">Invoice Date</div><div>' + today + '</div>' +
+        '<div style="font-size:12px;color:#666;margin-top:8px">Period</div><div>' + range + '</div>' +
+      '</div>' +
+    '</header>' +
+    '<section>' +
+      '<div style="display:flex;justify-content:space-between;gap:12px">' +
+        '<div><strong>Customer</strong><div>' + b.customer.name + '</div><div style="color:#666">' + b.customer.id + '</div></div>' +
+        '<div style="text-align:right"><strong>Mobile</strong><div>' + (b.customer.mobile || '—') + '</div><div style="color:#666">Payment: —</div></div>' +
+      '</div>' +
+    '</section>' +
+    '<table aria-label="Products"><thead><tr><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:center">Rate</th><th style="text-align:right">Amount</th></tr></thead><tbody>' + products + '</tbody><tfoot><tr><td colspan="3" style="text-align:right">Grand Total</td><td style="text-align:right">' + money(b.grandTotal) + '</td></tr></tfoot></table>' +
+    '<h3 style="margin-top:18px">Delivery Details</h3>' +
+    '<table aria-label="Deliveries"><thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead><tbody>' + deliveryRows + '</tbody></table>' +
+    '<footer style="margin-top:18px;text-align:center;color:#666">Thank you for your business.</footer>' +
+    '</body></html>';
+  return html;
 }

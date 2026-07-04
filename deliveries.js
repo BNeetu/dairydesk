@@ -33,12 +33,26 @@ function addDeliveryProductRow(){
   var prodOptions = Object.keys(PRODUCTS).map(function(p){
     return '<option value="' + p + '">' + PRODUCTS[p].icon + ' ' + p + ' (₹' + PRODUCTS[p].price + '/' + PRODUCTS[p].unit + ')</option>';
   }).join('');
+  var firstProduct = Object.keys(PRODUCTS)[0];
+  var firstPrice = firstProduct ? PRODUCTS[firstProduct].price : 0;
   div.innerHTML =
-    '<select class="prow-product" onchange="updateDeliveryTotal()">' + prodOptions + '</select>' +
+    '<select class="prow-product" onchange="onDeliveryProductChange(this)">' + prodOptions + '</select>' +
     '<input type="number" class="prow-qty" value="1" step="0.5" min="0.5" oninput="updateDeliveryTotal()" placeholder="Qty">' +
+    '<input type="number" class="prow-rate" value="' + firstPrice + '" step="0.5" min="0" oninput="updateDeliveryTotal()" placeholder="Unit Price" title="Change the unit price for this delivery">' +
     '<span class="row-amt" id="' + rid + '_amt">₹0</span>' +
     '<button class="row-del" onclick="document.getElementById(\'' + rid + '\').remove();updateDeliveryTotal()">×</button>';
   document.getElementById('d-productRows').appendChild(div);
+  updateDeliveryTotal();
+}
+
+function onDeliveryProductChange(select){
+  var product = select.value;
+  var row = select.closest('.prod-row');
+  if(!row) return;
+  var rateInput = row.querySelector('.prow-rate');
+  if(rateInput && PRODUCTS[product]){
+    rateInput.value = PRODUCTS[product].price;
+  }
   updateDeliveryTotal();
 }
 
@@ -46,9 +60,11 @@ function updateDeliveryTotal(){
   var rows = document.querySelectorAll('#d-productRows .prod-row');
   var total = 0;
   rows.forEach(function(row){
-    var product = row.querySelector('.prow-product').value;
+    var productEl = row.querySelector('.prow-product');
+    var product = productEl ? productEl.value : Object.keys(PRODUCTS)[0];
     var qty = parseFloat(row.querySelector('.prow-qty').value) || 0;
-    var amt = calcAmount(product, qty);
+    var rate = parseFloat(row.querySelector('.prow-rate').value) || 0;
+    var amt = Math.round(qty * rate * 100) / 100;
     total += amt;
     var amtEl = row.querySelector('.row-amt');
     if(amtEl) amtEl.textContent = money(amt);
@@ -70,18 +86,19 @@ function saveDelivery(){
   rows.forEach(function(row){
     var product = row.querySelector('.prow-product').value;
     var qty = parseFloat(row.querySelector('.prow-qty').value) || 0;
-    if(qty <= 0) return;
-    var amount = calcAmount(product, qty);
+    var rate = parseFloat(row.querySelector('.prow-rate').value) || 0;
+    if(qty <= 0 || rate <= 0) return;
+    var amount = Math.round(qty * rate * 100) / 100;
     var del = {
       id: uid('DEL'),
       date: date, custId: custId, custName: c.name,
-      slot: slot, product: product, qty: qty, amount: amount
+      slot: slot, product: product, qty: qty, rate: rate, amount: amount
     };
     deliveries.push(del);
     added.push(del);
   });
 
-  if(!added.length){ toast('Enter a valid quantity for at least one product', 'err'); return; }
+  if(!added.length){ toast('Enter a valid quantity and rate for at least one product', 'err'); return; }
 
   persist();
   closeModal('deliveryModal');
@@ -150,13 +167,14 @@ function renderDeliveriesTable(){
     body.innerHTML = '<tr><td colspan="7"><div class="empty"><span class="icon">🛵</span><p>No deliveries found for these filters</p></div></td></tr>';
   } else {
     body.innerHTML = pageList.map(function(d){
-      var info = PRODUCTS[d.product];
+      var info = PRODUCTS[d.product] || { icon:'', unit:'' };
+      var rate = typeof d.rate === 'number' ? d.rate : ((info.price || 0));
       var slotBadge = d.slot === 'Morning' ? '<span class="badge badge-amber">☀️ Morning</span>' : '<span class="badge badge-purple">🌙 Evening</span>';
       return '<tr>' +
         '<td>' + fmtDate(d.date) + '</td>' +
         '<td><strong>' + d.custName + '</strong></td>' +
         '<td>' + slotBadge + '</td>' +
-        '<td>' + info.icon + ' ' + d.product + '</td>' +
+        '<td>' + info.icon + ' ' + d.product + ' @ ₹' + rate + '/' + info.unit + '</td>' +
         '<td>' + d.qty + ' ' + info.unit + '</td>' +
         '<td style="font-weight:800;color:var(--primary)">' + money(d.amount) + '</td>' +
         '<td><button class="btn-icon" onclick="deleteDelivery(\'' + d.id + '\')" title="Delete">🗑️</button></td>' +

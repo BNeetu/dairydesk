@@ -156,10 +156,12 @@
       <!-- ═══ BILLING ═══ -->
       <section id="page-billing" class="page">
         <div class="pg-head">
-          <div><h1 class="pg-title">Billing</h1><p class="pg-sub">Generate monthly bills per customer</p></div>
-          <div style="display:flex;gap:8px">
-            <select id="billMonth"></select>
-            <button class="btn btn-primary" onclick="generateAllBills()">⚡ Generate All Bills</button>
+          <div><h1 class="pg-title">Billing</h1><p class="pg-sub">Generate invoices dynamically from delivery records</p></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px">Month<select id="billMonth"></select></label>
+            <label style="display:flex;align-items:center;gap:6px">From<input type="date" id="billFrom" onchange="renderBillingPage()"></label>
+            <label style="display:flex;align-items:center;gap:6px">To<input type="date" id="billTo" onchange="renderBillingPage()"></label>
+            <button class="btn btn-primary" onclick="generateAllBills()">⚡ Generate Bills</button>
           </div>
         </div>
         <div class="stats-row-sm" id="billStats"></div>
@@ -268,8 +270,16 @@
     <div class="fg"><label>Customer *</label>
       <select id="d-customer"></select>
     </div>
+    <div class="prod-row prod-row-header">
+      <div>Product</div>
+      <div>Qty</div>
+      <div>Unit Price</div>
+      <div style="text-align:right">Amount</div>
+      <div></div>
+    </div>
     <div id="d-productRows" class="prod-rows"></div>
     <button class="btn btn-ghost btn-sm" onclick="addDeliveryProductRow()" style="margin:8px 0">+ Add Product Line</button>
+    <div style="font-size:.84rem;color:var(--gray);margin-bottom:10px">Tip: You can override unit price for each line before recording delivery.</div>
     <div class="delivery-total-bar">
       <span>Total Amount</span><strong id="d-totalDisplay">₹0</strong>
     </div>
