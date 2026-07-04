@@ -26,7 +26,7 @@ function openCustModal(id){
   openModal('custModal');
 }
 
-function saveCustomer(){
+async function saveCustomer(){
   var name = document.getElementById('c-name').value.trim();
   var mobile = document.getElementById('c-mobile').value.trim();
   if(!name || !mobile){ toast('Name and mobile number are required!', 'err'); return; }
@@ -40,46 +40,79 @@ function saveCustomer(){
     regDate: document.getElementById('c-regdate').value,
     notes: document.getElementById('c-notes').value.trim()
   };
+  try{
+    var result;
+    if(editingCustId){
+      var payload = Object.assign({ id: editingCustId }, data);
+      toast('Saving changes...', '');
+      await updateCustomerRemote(payload);
+      toast('Customer updated ✓', 'ok');
+      logActivity('customer', 'Updated customer: ' + name);
+      customers = customers.map(function(c){
+        return c.id === editingCustId ? Object.assign({}, c, data) : c;
+      });
+    } else {
+      toast('Adding customer...', '');
+      result = await appendCustomerRemote(data);
+      toast('✅ New customer added: ' + name, 'ok');
+      logActivity('customer', 'New customer added: ' + name);
+      if(result && result.id){
+        customers.push(Object.assign({ id: result.id }, data));
+      }
+    }
 
-  if(editingCustId){
-    var idx = customers.findIndex(function(c){ return c.id === editingCustId; });
-    customers[idx] = Object.assign(customers[idx], data);
-    toast('Customer updated ✓', 'ok');
-    logActivity('customer', 'Updated customer: ' + name);
-  } else {
-    var maxNum = customers.reduce(function(m,c){ var n = parseInt(c.id.split('-')[1]); return n > m ? n : m; }, 0);
-    var newId = 'CUST-' + String(maxNum+1).padStart(3,'0');
-    customers.push(Object.assign({ id: newId }, data));
-    toast('✅ New customer added: ' + name, 'ok');
-    logActivity('customer', 'New customer added: ' + name);
+    closeModal('custModal');
+    // Refresh authoritative data from Google Sheets if possible
+    try{
+      await loadRemoteState();
+    }catch(err){
+      console.error('Failed to refresh data after save:', err);
+      toast('Saved but failed to refresh from sheet', 'err');
+    }
+
+    renderCustomersTable();
+    populateCustomerDropdown();
+  }catch(err){
+    console.error(err);
+    toast('Save failed: ' + (err.message || err), 'err');
   }
-  persist();
-  closeModal('custModal');
-  renderCustomersTable();
-  populateCustomerDropdown();
 }
 
-function toggleCustomerStatus(id){
+async function toggleCustomerStatus(id){
   var c = custById(id);
   if(!c) return;
-  c.status = c.status === 'active' ? 'inactive' : 'active';
-  persist();
-  toast(c.name + ' marked ' + c.status, c.status === 'active' ? 'ok' : '');
-  renderCustomersTable();
+  var newStatus = c.status === 'active' ? 'inactive' : 'active';
+  try{
+    toast('Updating status...', '');
+    await updateCustomerRemote(Object.assign({ id: id }, { status: newStatus }));
+    // Refresh authoritative data from Google Sheets
+    await loadRemoteState();
+    toast(c.name + ' marked ' + newStatus, newStatus === 'active' ? 'ok' : '');
+    renderCustomersTable();
+  }catch(err){
+    console.error(err);
+    toast('Status update failed: ' + (err.message || err), 'err');
+  }
 }
 
-function deleteCustomer(id){
+async function deleteCustomer(id){
   var c = custById(id);
   if(!c) return;
   if(!confirm('Delete customer "' + c.name + '" and all associated deliveries?')) return;
-  customers = customers.filter(function(cust){ return cust.id !== id; });
-  deliveries = deliveries.filter(function(del){ return del.custId !== id; });
-  persist();
-  toast('Customer deleted: ' + c.name, 'err');
-  logActivity('customer', 'Deleted customer: ' + c.name);
-  renderCustomersTable();
-  if(typeof renderDeliveriesTable === 'function') renderDeliveriesTable();
-  populateCustomerDropdown();
+  try{
+    toast('Deleting customer...', '');
+    await deleteCustomerRemote(id);
+    // Refresh authoritative data from Google Sheets
+    await loadRemoteState();
+    toast('Customer deleted: ' + c.name, 'err');
+    logActivity('customer', 'Deleted customer: ' + c.name);
+    renderCustomersTable();
+    if(typeof renderDeliveriesTable === 'function') renderDeliveriesTable();
+    populateCustomerDropdown();
+  }catch(err){
+    console.error(err);
+    toast('Delete failed: ' + (err.message || err), 'err');
+  }
 }
 
 function filteredCustomers(){
@@ -87,7 +120,8 @@ function filteredCustomers(){
   var statusF = document.getElementById('custStatusFilter').value;
   var prefF = document.getElementById('custPrefFilter').value;
   return customers.filter(function(c){
-    var matchQ = !q || c.name.toLowerCase().includes(q) || c.mobile.includes(q);
+    var mobile = c.mobile == null ? '' : String(c.mobile);
+    var matchQ = !q || c.name.toLowerCase().includes(q) || mobile.includes(q);
     var matchStatus = !statusF || c.status === statusF;
     var matchPref = !prefF || c.pref === prefF;
     return matchQ && matchStatus && matchPref;

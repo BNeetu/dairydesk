@@ -295,11 +295,6 @@
 <script src="reports.js"></script>
 <script src="settings.js"></script>
 <script src="app.js"></script>
-<script>
-  // Populate customer dropdown once data.js has loaded (used by deliveries module)
-  document.addEventListener('DOMContentLoaded', function(){
-    populateCustomerDropdown();
-  });
-</script>
+<!-- Customer dropdowns are populated after remote data loads in initApp() -->
 </body>
 </html>

@@ -17,13 +17,110 @@ function calcAmount(product, qty){
 // ══════════════════════════════════════════════════════
 //  PERSISTENCE
 // ══════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════=
+//  PERSISTENCE + GOOGLE SHEETS SYNC
+// ═════════════════════════════════════════════════════════════=
+var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbzLqi0-Gr1GkqWpU8Aex4RavawLeALUYlZkBh4-EuMzx0ULk9w0hm3TQQX3FGyJbUPziA/exec';
+var SHEETS_ENABLED = !!SHEETS_API_URL && !SHEETS_API_URL.includes('REPLACE');
+var SEED_VERSION = 1;
+
 function lsGet(k, def){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
-function persist(){
-  localStorage.setItem('dd_customers', JSON.stringify(customers));
+function persistLocalOnly(){
+  // Do NOT persist customers to localStorage. Customers are authoritative in Google Sheets.
+  // Preserve local caching only for non-customer data where appropriate.
   localStorage.setItem('dd_deliveries', JSON.stringify(deliveries));
   localStorage.setItem('dd_activity', JSON.stringify(activityLog));
   localStorage.setItem('dd_pricing', JSON.stringify(PRODUCTS));
   localStorage.setItem('dd_theme', currentTheme);
+}
+
+function sheetRequest(action, payload){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  var params = new URLSearchParams();
+  params.append('action', action);
+  params.append('payload', JSON.stringify(payload || {}));
+  return fetch(SHEETS_API_URL, { method: 'POST', body: params })
+    .then(function(res){
+      if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets request failed'); });
+      return res.json();
+    });
+}
+
+function loadRemoteState(){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  return fetch(SHEETS_API_URL + '?action=load')
+    .then(function(res){
+      if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets load failed'); });
+      return res.json();
+    })
+    .then(function(data){
+      if(!data || !data.success) throw new Error((data && data.error) || 'Invalid Google Sheets response');
+      if(!Array.isArray(data.customers) || !Array.isArray(data.deliveries)){
+        throw new Error('Remote app data is invalid');
+      }
+      customers = data.customers;
+      deliveries = data.deliveries;
+      activityLog = Array.isArray(data.activityLog) ? data.activityLog : activityLog;
+      currentTheme = data.currentTheme || currentTheme;
+      if(data.pricing && typeof data.pricing === 'object') PRODUCTS = data.pricing;
+      persistLocalOnly();
+      return data;
+    });
+}
+
+function saveRemoteState(){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  return sheetRequest('save', {
+    customers: customers,
+    deliveries: deliveries,
+    activityLog: activityLog,
+    pricing: PRODUCTS,
+    currentTheme: currentTheme,
+    seedVersion: typeof SEED_VERSION !== 'undefined' ? SEED_VERSION : 1
+  }).then(function(data){
+    if(!data || !data.success) throw new Error((data && data.error) || 'Google Sheets save failed');
+    return data;
+  });
+}
+
+function loadAppData(){
+  if(!SHEETS_ENABLED) return Promise.resolve();
+  return loadRemoteState().catch(function(err){
+    console.warn('Google Sheets sync unavailable:', err);
+    return Promise.resolve();
+  });
+}
+
+function persist(){
+  persistLocalOnly();
+  if(SHEETS_ENABLED){
+    saveRemoteState().catch(function(err){ console.warn('Google Sheets save failed:', err); });
+  }
+}
+
+// ---------- Per-customer remote operations ---------
+function appendCustomerRemote(cust){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  return sheetRequest('appendCustomer', cust).then(function(res){
+    if(!res || !res.success) throw new Error((res && res.error) || 'Append failed');
+    return res; // expected to contain new id and row
+  });
+}
+
+function updateCustomerRemote(cust){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  return sheetRequest('updateCustomer', cust).then(function(res){
+    if(!res || !res.success) throw new Error((res && res.error) || 'Update failed');
+    return res;
+  });
+}
+
+function deleteCustomerRemote(custId){
+  if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  return sheetRequest('deleteCustomer', { id: custId }).then(function(res){
+    if(!res || !res.success) throw new Error((res && res.error) || 'Delete failed');
+    return res;
+  });
 }
 function uid(prefix){ return (prefix||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
 function todayStr(){ return new Date().toISOString().split('T')[0]; }
@@ -31,7 +128,8 @@ function fmtDate(d){ if(!d) return ''; var p = d.split('-'); return p[2]+'/'+p[1
 function fmtDateLong(d){ var dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
 function money(n){ return '₹' + (Math.round((n||0)*100)/100).toLocaleString('en-IN'); }
 
-var customers   = lsGet('dd_customers', null);
+// Customers must be loaded from Google Sheets (single source of truth).
+var customers = [];
 var deliveries  = lsGet('dd_deliveries', null);
 var activityLog = lsGet('dd_activity', []);
 var currentTheme = lsGet('dd_theme', 'light');
@@ -132,20 +230,7 @@ function buildSeedData(){
 
   return { custs: custs, dels: dels };
 }
-
-// Force reseed v3 — includes expanded real dataset
-var SEED_VERSION = 'v3';
-if(!customers || !deliveries || lsGet('dd_seed_ver','') !== SEED_VERSION){
-  localStorage.removeItem('dd_customers');
-  localStorage.removeItem('dd_deliveries');
-  localStorage.removeItem('dd_activity');
-  var seed = buildSeedData();
-  customers  = seed.custs;
-  deliveries = seed.dels;
-  activityLog = [{ type:'system', msg:'Full June 2026 dataset loaded', time: Date.now() }];
-  localStorage.setItem('dd_seed_ver', JSON.stringify(SEED_VERSION));
-  persist();
-}
+// Note: Seed data removed. Customers must be loaded from Google Sheets (single source of truth).
 
 function logActivity(type, msg){
   activityLog.unshift({ type: type, msg: msg, time: Date.now() });

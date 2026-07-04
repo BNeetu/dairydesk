@@ -548,7 +548,7 @@ function calcAmount(product, qty){
 // ══════════════════════════════════════════════════════
 function lsGet(k, def){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
 function persist(){
-  localStorage.setItem('dd_customers', JSON.stringify(customers));
+  // Do NOT persist customers to localStorage in single-file mode when using Google Sheets.
   localStorage.setItem('dd_deliveries', JSON.stringify(deliveries));
   localStorage.setItem('dd_activity', JSON.stringify(activityLog));
   localStorage.setItem('dd_pricing', JSON.stringify(PRODUCTS));
@@ -560,7 +560,7 @@ function fmtDate(d){ if(!d) return ''; var p = d.split('-'); return p[2]+'/'+p[1
 function fmtDateLong(d){ var dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}); }
 function money(n){ return '₹' + (Math.round((n||0)*100)/100).toLocaleString('en-IN'); }
 
-var customers   = lsGet('dd_customers', null);
+var customers   = [];
 var deliveries  = lsGet('dd_deliveries', null);
 var activityLog = lsGet('dd_activity', []);
 var currentTheme = lsGet('dd_theme', 'light');
@@ -653,19 +653,7 @@ function buildSeedData(){
   return { custs: custs, dels: dels };
 }
 
-// Force reseed v5
-var SEED_VERSION = 'v5';
-if(!customers || !deliveries || lsGet('dd_seed_ver','') !== SEED_VERSION){
-  localStorage.removeItem('dd_customers');
-  localStorage.removeItem('dd_deliveries');
-  localStorage.removeItem('dd_activity');
-  var seed = buildSeedData();
-  customers  = seed.custs;
-  deliveries = seed.dels;
-  activityLog = [{ type:'system', msg:'Final 12-customer dataset loaded', time: Date.now() }];
-  localStorage.setItem('dd_seed_ver', JSON.stringify(SEED_VERSION));
-  persist();
-}
+// Note: Seed data removed for single-file bundle. Customers must be provided by Google Sheets.
 
 function logActivity(type, msg){
   activityLog.unshift({ type: type, msg: msg, time: Date.now() });

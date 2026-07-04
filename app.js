@@ -382,8 +382,20 @@ function goPage(page){
 //  INIT
 // ══════════════════════════════════════════════════════
 function initApp(){
-  applyTheme();
-  renderDashboard();
+  // Load remote data (must be enabled) then initialize UI and dropdowns
+  loadAppData().then(function(){
+    applyTheme();
+    // populate dropdowns and tables after remote data load
+    populateCustomerDropdown();
+    renderDashboard();
+    if(document.getElementById('page-customers').classList.contains('active')) renderCustomersTable();
+  }).catch(function(err){
+    applyTheme();
+    console.error('Failed to load remote data:', err);
+    toast('Failed to load data from Google Sheets. Configure SHEETS_API_URL.', 'err');
+    // still render dashboard so app doesn't break, but customer lists will be empty
+    renderDashboard();
+  });
 }
 
 // ══════════════════════════════════════════════════════
