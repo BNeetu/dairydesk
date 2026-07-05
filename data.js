@@ -63,8 +63,24 @@ function loadRemoteState(){
         console.error('Google Sheets returned invalid remote app data', data);
         throw new Error('Remote app data is invalid');
       }
-      customers = data.customers;
-      deliveries = data.deliveries;
+      // Normalize any date-ish field to a plain YYYY-MM-DD string. Google
+      // Sheets / Apps Script commonly returns date-formatted cells as full
+      // ISO timestamps (e.g. "2026-07-01T00:00:00.000Z") rather than plain
+      // dates. Left as-is, that breaks exact-match filtering (deliveriesOn),
+      // silently fails to populate <input type="date"> fields (they require
+      // strict YYYY-MM-DD and just show empty/placeholder otherwise), and
+      // can produce an invalid Date when other code appends a time suffix.
+      function normDate(s){
+        if(!s) return s;
+        var str = String(s).split('T')[0];
+        return /^\d{4}-\d{2}-\d{2}$/.test(str) ? str : s;
+      }
+      customers = data.customers.map(function(c){
+        return Object.assign({}, c, { regDate: normDate(c.regDate) });
+      });
+      deliveries = data.deliveries.map(function(d){
+        return Object.assign({}, d, { date: normDate(d.date) });
+      });
       activityLog = Array.isArray(data.activityLog) ? data.activityLog : activityLog;
       currentTheme = data.currentTheme || currentTheme;
       if(data.pricing && typeof data.pricing === 'object' && Object.keys(data.pricing).length){
@@ -258,5 +274,12 @@ function buildSeedData(){
 function logActivity(type, msg){
   activityLog.unshift({ type: type, msg: msg, time: Date.now() });
   if(activityLog.length > 30) activityLog = activityLog.slice(0,30);
-  persist();
+  // Local-only: the activity feed is a nice-to-have dashboard widget, not
+  // authoritative data. Every action that actually needs remote sync already
+  // does it explicitly (appendCustomerRemote/updateCustomerRemote/
+  // deleteCustomerRemote, or persist() for deliveries) — triggering another
+  // full-state save here on top of that just doubled the number of Google
+  // Sheets round-trips per action for no benefit, and was the main source of
+  // "the app feels slow" after every save.
+  persistLocalOnly();
 }

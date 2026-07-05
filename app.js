@@ -112,11 +112,47 @@ function toast(msg, type){
   }, 2800);
 }
 
-function openModal(id){ document.getElementById(id).classList.add('open'); }
-function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+var modalStack = []; // tracks open modals in order, so nested modals (e.g. Customer Detail -> Billing) restore correctly
+
+function openModal(id){
+  document.getElementById(id).classList.add('open');
+  modalStack.push(id);
+  applyModalInertness();
+}
+function closeModal(id){
+  document.getElementById(id).classList.remove('open');
+  modalStack = modalStack.filter(function(m){ return m !== id; });
+  applyModalInertness();
+}
+
+// Disable every interactive element outside the topmost open modal. This is
+// the reliable fix for background fields (like the customer search box,
+// which is still fully live underneath the modal overlay) getting written
+// into by browser/OS-level autofill (Android Gboard, Samsung Keyboard,
+// password-manager overlays, etc.) — those only ever target ENABLED fields,
+// and HTML's autocomplete="off" alone doesn't reliably stop OS-level autofill.
+// It also just prevents accidentally interacting with the background at all
+// while a dialog is open, which is correct modal behavior regardless.
+function applyModalInertness(){
+  // First, undo any inertness we previously applied.
+  document.querySelectorAll('[data-modal-disabled="1"]').forEach(function(el){
+    el.disabled = false;
+    el.removeAttribute('data-modal-disabled');
+  });
+  if(!modalStack.length) return; // no modal open — leave everything as-is
+  var topModal = document.getElementById(modalStack[modalStack.length - 1]);
+  if(!topModal) return;
+  document.querySelectorAll('input, textarea, select, button').forEach(function(el){
+    if(topModal.contains(el)) return;      // leave the active modal's own controls alone
+    if(el.disabled) return;                // already disabled for its own legitimate reason — don't touch/track it
+    el.setAttribute('data-modal-disabled', '1');
+    el.disabled = true;
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function(){
   document.querySelectorAll('.modal-bg').forEach(function(bg){
-    bg.addEventListener('click', function(e){ if(e.target === bg) bg.classList.remove('open'); });
+    bg.addEventListener('click', function(e){ if(e.target === bg) closeModal(bg.id); });
   });
 });
 

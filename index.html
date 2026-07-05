@@ -100,7 +100,7 @@
           <button class="btn btn-primary" onclick="openCustModal()">➕ Add Customer</button>
         </div>
         <div class="filter-bar">
-          <input type="text" id="custSearch" class="search-input" placeholder="🔍 Search name or mobile..." oninput="renderCustomersTable()">
+          <input type="text" id="custSearch" name="custSearch" class="search-input" placeholder="🔍 Search name or mobile..." autocomplete="off" oninput="renderCustomersTable()">
           <select id="custStatusFilter" onchange="renderCustomersTable()">
             <option value="">All Status</option>
             <option value="active">Active</option>
@@ -140,7 +140,7 @@
           <select id="delFilterProduct" onchange="renderDeliveriesTable()">
             <option value="">All Products</option><option value="Milk">Milk</option><option value="Curd">Curd</option><option value="Buttermilk">Buttermilk</option><option value="Ghee">Ghee</option>
           </select>
-          <input type="text" id="delFilterCust" class="search-input" placeholder="🔍 Customer name..." oninput="renderDeliveriesTable()" style="max-width:200px">
+          <input type="text" id="delFilterCust" name="delFilterCust" class="search-input" placeholder="🔍 Customer name..." autocomplete="off" oninput="renderDeliveriesTable()" style="max-width:200px">
           <button class="btn btn-ghost" onclick="clearDeliveryFilters()">Clear</button>
         </div>
         <div class="stats-row-sm" id="delQuickStats"></div>
@@ -227,10 +227,10 @@
     <button class="modal-close" onclick="closeModal('custModal')">✕</button>
     <h2 id="custModalTitle">Add New Customer</h2>
     <div class="frow">
-      <div class="fg"><label>Full Name *</label><input id="c-name" placeholder="e.g. Laxman ji"></div>
-      <div class="fg"><label>Mobile Number *</label><input type="tel" id="c-mobile" placeholder="10-digit number"></div>
+      <div class="fg"><label>Full Name *</label><input id="c-name" name="c-name" autocomplete="off" placeholder="e.g. Laxman ji"></div>
+      <div class="fg"><label>Mobile Number *</label><input type="tel" id="c-mobile" name="c-mobile" autocomplete="off" inputmode="numeric" placeholder="10-digit number"></div>
     </div>
-    <div class="fg"><label>Address</label><textarea id="c-addr" rows="2" placeholder="Full address..."></textarea></div>
+    <div class="fg"><label>Address</label><textarea id="c-addr" name="c-addr" autocomplete="off" rows="2" placeholder="Full address..."></textarea></div>
     <div class="frow">
       <div class="fg"><label>Delivery Preference</label>
         <select id="c-pref"><option>Morning</option><option>Evening</option><option>Both</option></select>
@@ -240,7 +240,7 @@
       </div>
     </div>
     <div class="fg"><label>Registration Date</label><input type="date" id="c-regdate"></div>
-    <div class="fg"><label>Notes</label><textarea id="c-notes" rows="2" placeholder="Any notes about this customer..."></textarea></div>
+    <div class="fg"><label>Notes</label><textarea id="c-notes" name="c-notes" autocomplete="off" rows="2" placeholder="Any notes about this customer..."></textarea></div>
     <button id="custSaveBtn" class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="saveCustomer()">💾 Save Customer</button>
   </div>
 </div>

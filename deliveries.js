@@ -100,6 +100,18 @@ function saveDelivery(){
 
   if(!added.length){ toast('Enter a valid quantity and rate for at least one product', 'err'); return; }
 
+  // The date-range filter is only auto-set ONCE (see initDeliveryFilters) and
+  // never grows on its own. Without this, a delivery dated later than the
+  // filter's current "to" (or earlier than its "from") would save correctly
+  // but be silently excluded from the visible list until the page reloads
+  // and the filter gets recomputed from scratch.
+  var toEl = document.getElementById('delFilterTo');
+  var fromEl = document.getElementById('delFilterFrom');
+  added.forEach(function(d){
+    if(toEl && (!toEl.value || d.date > toEl.value)) toEl.value = d.date;
+    if(fromEl && (!fromEl.value || d.date < fromEl.value)) fromEl.value = d.date;
+  });
+
   persist();
   closeModal('deliveryModal');
   var totalAmt = sumAmount(added);

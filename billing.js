@@ -183,7 +183,7 @@ function downloadBillPDF(custId){
   if(window._pdfGenerating) return toast('PDF generation in progress', 'warn');
   window._pdfGenerating = true;
   var b = buildCustomerBill(custId);
-  var filename = 'billa_' + b.customer.name.replace(/ /g,'_') + '_' + b.range.from + '_to_' + b.range.to + '.pdf';
+  var filename = 'bill_' + b.customer.name.replace(/ /g,'_') + '_' + b.range.from + '_to_' + b.range.to + '.pdf';
   toast('Generating PDF…', 'info');
 
   // Render full HTML into an offscreen iframe and wait for images to load
@@ -270,31 +270,64 @@ function downloadBillPDF(custId){
 
 function printBill(custId){
   var b = buildCustomerBill(custId);
-  // Create a standalone HTML page in a Blob that triggers print on load.
   var docHtml = renderInvoiceHTML(b);
-  // Append a small script to call print after load and then optionally close the tab.
-  var autoPrint = '<script>window.addEventListener("load", function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 200); });</' + 'script>';
-  var full = docHtml.replace(/<\/body>/i, autoPrint + '\n</body>');
-  try{
-    var blob = new Blob([full], { type: 'text/html' });
-    var url = URL.createObjectURL(blob);
-    // Open in a new tab detached from opener to avoid blocking the main app.
-    var w = window.open(url, '_blank', 'noopener');
-    // Revoke URL after a short delay
-    setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} }, 5000);
-  }catch(err){
-    console.error('Print fallback', err);
-    // Fallback to original approach
-    var printWindow = window.open('', '_blank');
-    printWindow.document.write(docHtml);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(function(){ try{ printWindow.print(); }catch(e){} }, 300);
+
+  // Use a same-origin hidden iframe (same technique as PDF export) rather than
+  // opening a blob: URL in a new tab. A blob: document has no base path of its
+  // own, so relative assets like the logo image fail to resolve there — and
+  // some browsers handle full-document blob navigation unreliably, which is
+  // what caused the print preview to get stuck on a blank/loading state.
+  var iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0';
+  iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+  document.body.appendChild(iframe);
+  var idoc = iframe.contentWindow.document;
+  idoc.open();
+  idoc.write(docHtml);
+  idoc.close();
+
+  var cleaned = false;
+  function cleanup(){
+    if(cleaned) return;
+    cleaned = true;
+    setTimeout(function(){ try{ document.body.removeChild(iframe); }catch(e){} }, 500);
+  }
+
+  function doPrint(){
+    try{
+      iframe.contentWindow.focus();
+      // Remove the iframe only after the print dialog closes, not immediately
+      // after calling print() — some browsers abort the job if the source
+      // document disappears mid-dialog.
+      iframe.contentWindow.onafterprint = cleanup;
+      iframe.contentWindow.print();
+      setTimeout(cleanup, 60000); // fail-safe if 'afterprint' never fires
+    }catch(err){
+      console.error('Print failed', err);
+      toast('Could not open print dialog', 'err');
+      cleanup();
+    }
+  }
+
+  // Wait for the logo image to finish loading (success or failure) before
+  // printing, so it isn't rendered mid-load / missing from the printout.
+  var imgs = Array.from(idoc.images || []);
+  if(!imgs.length){
+    setTimeout(doPrint, 150);
+  } else {
+    var remaining = imgs.length;
+    var timer = setTimeout(doPrint, 3000);
+    imgs.forEach(function(im){
+      function done(){ if(--remaining === 0){ clearTimeout(timer); doPrint(); } }
+      if(im.complete) done();
+      else { im.addEventListener('load', done); im.addEventListener('error', done); }
+    });
   }
 }
 
 function renderInvoiceHTML(b){
-  var logo = 'logo.png';
+  var logo;
+  try{ logo = new URL('logo.png', window.location.href).href; }catch(e){ logo = 'logo.png'; }
   var today = new Date().toLocaleDateString('en-IN');
   var range = b.range.from + ' to ' + b.range.to;
   var products = Object.keys(b.products).map(function(p){

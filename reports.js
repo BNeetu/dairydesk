@@ -49,8 +49,8 @@ function buildDailyReport(date){
 function buildWeeklyReport(date){
   var end = new Date(date + 'T00:00:00');
   var start = new Date(date + 'T00:00:00'); start.setDate(start.getDate()-6);
-  var dataLatest = latestDataDate();
-  var dataEarliest = earliestDataDate();
+  var dataLatest = toIsoDate(latestDataDate());
+  var dataEarliest = toIsoDate(earliestDataDate());
   // If the requested date is beyond the data we have, clamp the window to the
   // actual data range so the report isn't just empty.
   if(date > dataLatest){ end = new Date(dataLatest + 'T00:00:00'); start = new Date(dataEarliest + 'T00:00:00'); }
@@ -82,7 +82,7 @@ function buildMonthlyReport(date){
 }
 
 function buildRevenueReport(date){
-  var latestDate = latestDataDate();
+  var latestDate = toIsoDate(latestDataDate());
   var useDate = date > latestDate ? latestDate : date;
   var month = useDate.slice(0,7);
   var todayRev = sumAmount(deliveriesOn(useDate));
