@@ -130,9 +130,10 @@ function renderBillingPage(){
         '<div class="bill-total">' + money(b.grandTotal) + '</div>' +
       '</div>' +
       '<div class="bill-rows">' + rows + '</div>' +
-      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">' +
         '<button class="btn btn-ghost btn-sm" style="flex:1" onclick="openBillModal(\'' + b.customer.id + '\')">📄 View Full Bill</button>' +
         '<button class="btn btn-ghost btn-sm" style="flex:1" title="Add Previous/Missed Deliveries" onclick="openBackdatedModal(\'' + b.customer.id + '\')">➕ Missed Deliveries</button>' +
+        '<button class="btn btn-sm" style="flex:1 1 100%;background:var(--wa);color:#fff" title="Send this bill to the customer on WhatsApp" onclick="sendBillWhatsApp(\'' + b.customer.id + '\')">📱 WhatsApp Bill</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -182,10 +183,11 @@ function openBillModal(custId){
       '<thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th><th></th></tr></thead>' +
       '<tbody>' + deliveryRows + '</tbody>' +
     '</table>' +
-    '<div style="display:flex;gap:8px;margin-top:14px">' +
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
       '<button class="btn btn-ghost" style="flex:1" onclick="closeModal(\'billModal\')">Close</button>' +
       '<button class="btn btn-primary" style="flex:1" onclick="downloadBillPDF(\'' + custId + '\')">📄 Download PDF</button>' +
       '<button class="btn btn-blue" style="flex:1" onclick="printBill(\'' + custId + '\')">🖨️ Print Bill</button>' +
+      '<button class="btn" style="flex:1;background:var(--wa);color:#fff" onclick="sendBillWhatsApp(\'' + custId + '\')">📱 WhatsApp Bill</button>' +
     '</div>';
 
   openModal('billModal');
@@ -380,4 +382,140 @@ function renderInvoiceHTML(b){
     '<footer style="margin-top:18px;text-align:center;color:#666">Thank you for your business.</footer>' +
     '</main></body></html>';
   return html;
+}
+
+
+// ══════════════════════════════════════════════════════
+//  WHATSAPP BILL
+//  Read-only: builds a message from buildCustomerBill() (the SAME object the billing
+//  page, PDF and print use) and never creates/edits/deletes a delivery.
+//
+//  WHATSAPP_MODE
+//    'link' (default) - opens a WhatsApp chat with the bill text pre-filled. The user
+//                       presses Send inside WhatsApp. Works with no setup.
+//    'api'            - asks the Apps Script backend to send through the WhatsApp Cloud
+//                       API. Credentials live ONLY in Apps Script "Script properties"
+//                       (see Code.gs). Only enable after the backend is configured.
+// ══════════════════════════════════════════════════════
+var WHATSAPP_MODE = 'link';
+var WA_MAX_TEXT = 3000;      // keep the message short enough for a wa.me link
+var _waBusy = {};            // one send per customer at a time
+
+// -> { ok:true, number:'919876543210' } | { ok:false, reason:'missing'|'invalid' }
+function normalizeWhatsAppNumber(raw){
+  if(raw === null || typeof raw === 'undefined') return { ok:false, reason:'missing' };
+  var s = String(raw).trim();
+  if(!s) return { ok:false, reason:'missing' };
+  var hasPlus = s.charAt(0) === '+';
+  var d = s.replace(/\D/g, '');
+  if(!d) return { ok:false, reason:'invalid' };
+  if(hasPlus || d.slice(0,2) === '00'){
+    if(d.slice(0,2) === '00') d = d.slice(2);
+    return (d.length >= 10 && d.length <= 15 && d.charAt(0) !== '0') ? { ok:true, number:d } : { ok:false, reason:'invalid' };
+  }
+  if(d.length === 10 && /^[6-9]/.test(d)) return { ok:true, number:'91' + d };                         // 9876543210
+  if(d.length === 11 && d.charAt(0) === '0' && /^[6-9]/.test(d.slice(1))) return { ok:true, number:'91' + d.slice(1) }; // 09876543210
+  if(d.length === 12 && d.slice(0,2) === '91' && /^[6-9]/.test(d.slice(2))) return { ok:true, number:d };  // 919876543210
+  return { ok:false, reason:'invalid' };
+}
+
+// "42.00 L" or "42.00 L + 3.00 unit" - summed per unit from the bill's own product totals
+function billTotalQtyLabel(b){
+  var units = {};
+  Object.keys(b.products).forEach(function(p){
+    var u = (PRODUCTS[p] && PRODUCTS[p].unit) || 'unit';
+    units[u] = (units[u] || 0) + b.products[p].qty;
+  });
+  return Object.keys(units).map(function(u){ return units[u].toFixed(2) + ' ' + u; }).join(' + ');
+}
+
+// Same content as the printed invoice: customer, period, product summary, delivery
+// details, grand total. All numbers come straight from `b`.
+function buildBillWhatsAppText(b){
+  var prods = Object.keys(b.products);
+  var summary = prods.map(function(p){
+    var info = PRODUCTS[p] || { icon:'', unit:'' }, pr = b.products[p];
+    return (info.icon ? info.icon + ' ' : '') + p + ': ' + pr.qty.toFixed(2) + ' ' + info.unit + ' x ' + pr.rateLabel + ' = ' + money(pr.amount);
+  }).join('\n');
+
+  function assemble(details){
+    return '*Bhati Farms Ledger*\n' +
+      'Monthly Bill\n\n' +
+      'Customer: ' + b.customer.name + ' (' + b.customer.id + ')\n' +
+      'Period: ' + fmtDateLong(b.range.from) + ' to ' + fmtDateLong(b.range.to) + '\n' +
+      'Invoice Date: ' + new Date().toLocaleDateString('en-IN') + '\n\n' +
+      '*Summary*\n' + summary + '\n\n' +
+      details +
+      'Total Quantity: ' + billTotalQtyLabel(b) + '\n' +
+      '*Grand Total: ' + money(b.grandTotal) + '*\n\n' +
+      'Thank you for your business.';
+  }
+
+  var lines = b.deliveries.map(function(d){
+    return fmtDate(d.date) + ' | ' + d.product + ' | ' + Number(d.qty).toFixed(2) + ' | ' + money(d.amount);
+  }).join('\n');
+  var text = assemble('*Delivery Details* (Date | Product | Qty | Amount)\n' + lines + '\n\n');
+  if(text.length > WA_MAX_TEXT){
+    text = assemble('*Deliveries:* ' + b.deliveries.length + ' (full list omitted to keep this message short)\n\n');
+  }
+  return text;
+}
+
+function openWhatsAppChat(number, text, name){
+  var url = 'https://wa.me/' + number + '?text=' + encodeURIComponent(text);
+  var w = window.open(url, '_blank');
+  if(!w){ toast('Your browser blocked the WhatsApp window. Allow pop-ups for this page and try again.', 'err'); return; }
+  try{ w.opener = null; }catch(e){}
+  // Honest wording: opening the chat is NOT the same as the message being sent.
+  toast('WhatsApp opened for ' + name + ' - press Send there to deliver the bill', '');
+}
+
+async function sendBillWhatsApp(custId){
+  if(_waBusy[custId]) return;
+  var c = custById(custId);
+  if(!c){ toast('Customer not found', 'err'); return; }
+
+  var num = normalizeWhatsAppNumber(c.mobile);
+  if(!num.ok){
+    toast(num.reason === 'missing'
+      ? 'Customer mobile number is not available.'
+      : 'Customer mobile number is invalid ("' + String(c.mobile) + '"). Please correct it in the customer profile.', 'err');
+    return;
+  }
+
+  var b = buildCustomerBill(custId);                 // exactly what the billing page shows
+  if(!b.range.from || !b.range.to){ toast('Select a billing period first', 'err'); return; }
+  if(!b.deliveries.length){ toast('No deliveries in the selected period - nothing to send', 'err'); return; }
+  var text = buildBillWhatsAppText(b);
+
+  _waBusy[custId] = true;
+  try{
+    if(WHATSAPP_MODE === 'api'){
+      if(!confirm('Send this bill to ' + c.name + ' on WhatsApp (+' + num.number + ')?')) return;
+      try{
+        toast('Sending via WhatsApp...', '');
+        var res = await sheetRequest('sendWhatsAppBill', {
+          custId: c.id,                               // the backend looks up the number itself
+          text: text,
+          tpl: {
+            name: c.name,
+            period: fmtDateLong(b.range.from) + ' to ' + fmtDateLong(b.range.to),
+            qty: billTotalQtyLabel(b),
+            amount: money(b.grandTotal),
+            count: String(b.deliveries.length)
+          }
+        });
+        if(!res || !res.success) throw new Error((res && res.error) || 'WhatsApp API request failed');
+        toast('Bill accepted by WhatsApp for ' + c.name, 'ok');
+        return;
+      }catch(err){
+        console.error('WhatsApp API send failed', err);
+        toast('Automatic sending failed: ' + (err.message || err) + '. Opening WhatsApp chat instead.', 'err');
+        // fall through to the link fallback
+      }
+    }
+    openWhatsAppChat(num.number, text, c.name);
+  }finally{
+    delete _waBusy[custId];
+  }
 }

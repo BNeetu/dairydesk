@@ -39,7 +39,7 @@ function doPost(e){
   }
   var lock = null;
   try{
-    if(API_KEY && WRITE_ACTIONS.indexOf(action) !== -1){
+    if(API_KEY && (WRITE_ACTIONS.indexOf(action) !== -1 || action === 'sendWhatsAppBill')){
       if(!payload || payload.key !== API_KEY) return jsonResponse({ success:false, error:'Invalid API key' });
     }
     // One write at a time: row numbers can't shift under a concurrent request.
@@ -56,6 +56,7 @@ function doPost(e){
       case 'updateDelivery': return updateDelivery(payload);
       case 'deleteDelivery': return deleteDelivery(payload && payload.id);
       case 'save': return saveFullState(payload);
+      case 'sendWhatsAppBill': return sendWhatsAppBill(payload);
       default: return jsonResponse({ success:false, error:'Unknown POST action' });
     }
   }catch(err){
@@ -359,4 +360,93 @@ function convertDateColumnToText(){
   rng.setNumberFormat('@');
   rng.setValues(out);
   Logger.log('Converted ' + out.length + ' date cell(s) to text');
+}
+
+
+// ══════════════════════════════════════════════════════
+//  WHATSAPP CLOUD API  (only used when WHATSAPP_MODE = 'api' in billing.js)
+//
+//  Credentials are read from Script properties, never from the browser:
+//    Apps Script editor -> Project Settings (gear) -> Script properties -> Add:
+//      WA_ACCESS_TOKEN      permanent System User token from Meta
+//      WA_PHONE_NUMBER_ID   the sending phone number's ID
+//      WA_TEMPLATE_NAME     (recommended) an APPROVED template, see below
+//      WA_TEMPLATE_LANG     (optional, default 'en')
+//      WA_API_VERSION       (optional, default 'v20.0')
+//
+//  WhatsApp rule: a business may only send FREE-FORM text to a customer who messaged
+//  the business in the last 24 hours. Otherwise Meta requires an approved TEMPLATE.
+//  Without WA_TEMPLATE_NAME this sends free-form text (may not be delivered outside
+//  the 24h window). With it, the template BODY must have exactly 5 variables:
+//     {{1}} customer name  {{2}} period  {{3}} total quantity  {{4}} total amount  {{5}} delivery count
+//
+//  Safety: the destination number is ALWAYS the customer's number stored in the
+//  Customers sheet (a number sent by the browser is ignored), and each customer can
+//  receive at most one bill per minute.
+//  "success" means Meta ACCEPTED the message, not that it reached the phone.
+// ══════════════════════════════════════════════════════
+function waNormalizeNumber_(raw){
+  var s = String(raw == null ? '' : raw).trim();
+  if(!s) return '';
+  var plus = s.charAt(0) === '+';
+  var d = s.replace(/\D/g, '');
+  if(!d) return '';
+  if(plus || d.slice(0,2) === '00'){
+    if(d.slice(0,2) === '00') d = d.slice(2);
+    return (d.length >= 10 && d.length <= 15 && d.charAt(0) !== '0') ? d : '';
+  }
+  if(d.length === 10 && /^[6-9]/.test(d)) return '91' + d;
+  if(d.length === 11 && d.charAt(0) === '0' && /^[6-9]/.test(d.slice(1))) return '91' + d.slice(1);
+  if(d.length === 12 && d.slice(0,2) === '91' && /^[6-9]/.test(d.slice(2))) return d;
+  return '';
+}
+
+function waParam_(v){   // template variables may not contain newlines/tabs
+  return String(v == null ? '' : v).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, 200) || '-';
+}
+
+function sendWhatsAppBill(data){
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('WA_ACCESS_TOKEN');
+  var phoneId = props.getProperty('WA_PHONE_NUMBER_ID');
+  if(!token || !phoneId) return jsonResponse({ success:false, error:'WhatsApp API is not configured on the server' });
+
+  var custId = String((data && data.custId) || '').trim();
+  var cust = sheetToObjects(SHEET_CUSTOMERS, CUSTOMER_HEADERS).filter(function(c){ return String(c.id).trim() === custId; })[0];
+  if(!cust) return jsonResponse({ success:false, error:'Customer not found' });
+
+  var to = waNormalizeNumber_(cust.mobile);
+  if(!to) return jsonResponse({ success:false, error:'Customer mobile number is not available or invalid' });
+
+  var text = String((data && data.text) || '').trim();
+  if(!text) return jsonResponse({ success:false, error:'Bill text is empty' });
+  text = text.slice(0, 3800);
+
+  var cache = CacheService.getScriptCache(), key = 'wa_last_' + custId;
+  if(cache.get(key)) return jsonResponse({ success:false, error:'A bill was just sent to this customer. Please wait a minute.' });
+
+  var template = props.getProperty('WA_TEMPLATE_NAME');
+  var body;
+  if(template){
+    var t = (data && data.tpl) || {};
+    body = { messaging_product:'whatsapp', to:to, type:'template', template:{
+      name: template, language:{ code: props.getProperty('WA_TEMPLATE_LANG') || 'en' },
+      components:[{ type:'body', parameters:[t.name, t.period, t.qty, t.amount, t.count].map(function(v){ return { type:'text', text: waParam_(v) }; }) }]
+    }};
+  } else {
+    body = { messaging_product:'whatsapp', to:to, type:'text', text:{ preview_url:false, body:text } };
+  }
+
+  var url = 'https://graph.facebook.com/' + (props.getProperty('WA_API_VERSION') || 'v20.0') + '/' + phoneId + '/messages';
+  var res = UrlFetchApp.fetch(url, {
+    method:'post', contentType:'application/json', headers:{ Authorization:'Bearer ' + token },
+    payload: JSON.stringify(body), muteHttpExceptions:true
+  });
+  var code = res.getResponseCode(), json = {};
+  try{ json = JSON.parse(res.getContentText()); }catch(e){}
+  if(code >= 200 && code < 300 && json.messages && json.messages.length){
+    cache.put(key, '1', 60);
+    return jsonResponse({ success:true, id: json.messages[0].id });
+  }
+  return jsonResponse({ success:false, error: (json.error && json.error.message) || ('WhatsApp API error (HTTP ' + code + ')') });
 }
