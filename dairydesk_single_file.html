@@ -592,7 +592,7 @@ function calcAmount(product, qty){
 // ═════════════════════════════════════════════════════════════=
 //  PERSISTENCE + GOOGLE SHEETS SYNC
 // ═════════════════════════════════════════════════════════════=
-var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbzLqi0-Gr1GkqWpU8Aex4RavawLeALUYlZkBh4-EuMzx0ULk9w0hm3TQQX3FGyJbUPziA/exec';
+var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbyRtpcvt726OCpssi-I95wolc1oKgwnhYLl-nmL0tqRn3xwyVfdOD7hc1ORZMEMh7Fu/exec';
 var SHEETS_ENABLED = !!SHEETS_API_URL && !SHEETS_API_URL.includes('REPLACE');
 var SEED_VERSION = 1;
 
@@ -2607,11 +2607,17 @@ function printBill(custId){
 //  Business Cloud API can do that. So there are two modes:
 //
 //  WHATSAPP_MODE = 'share' (default, needs no setup)
-//    1. Phones / browsers with file-sharing: opens the system share sheet with the PDF
-//       attached; choose WhatsApp, then the customer's chat (number shown in the toast).
-//    2. Everything else (most desktop browsers): downloads the PDF and opens the
-//       customer's WhatsApp chat (using their saved number) with a short greeting, so
-//       you just attach the downloaded file.
+//    Tap "WhatsApp Bill" and the customer's chat opens DIRECTLY on their saved number
+//    (WhatsApp app if installed, otherwise WhatsApp Web / desktop app), with a short
+//    greeting pre-filled. The PDF is saved to the device at the same moment, so all that
+//    is left is: tap Attach -> Document -> pick the PDF (it is the newest file) -> Send.
+//    No searching for the customer and no typing the number.
+//    PDF LINK (default on): the PDF is uploaded to Google Drive through your Apps Script
+//    (action 'uploadBillPDF', code in whatsapp_bill_link.gs) and the chat opens with a message
+//    that contains the PDF link, so the customer receives the bill as soon as you press Send.
+//    Set WHATSAPP_UPLOAD_LINK = false to skip the upload and attach the PDF by hand instead.
+//    Set WHATSAPP_SHARE_FIRST = true to get the old behaviour back (system share sheet with
+//    the PDF already attached; you then pick the contact yourself).
 //  WHATSAPP_MODE = 'api'
 //    Sends the PDF straight to the customer's saved number through the WhatsApp Cloud
 //    API. Credentials live only in Apps Script "Script properties" — see
@@ -2649,12 +2655,47 @@ function billCaption(inv){
          '. Please find the PDF invoice attached. Thank you!';
 }
 
-function openWhatsAppChat(number, text){
+// true  = old behaviour: open the system share sheet with the PDF attached first,
+//         then you choose WhatsApp and search for the customer yourself.
+// false = (default) open the customer's chat directly on their saved number and keep the
+//         PDF saved on the device, ready to attach.
+var WHATSAPP_SHARE_FIRST = false;
+// true (default) = upload the PDF to Drive and send its link in the chat message (needs whatsapp_bill_link.gs).
+var WHATSAPP_UPLOAD_LINK = true;
+
+function isMobileDevice(){
+  var ua = navigator.userAgent || '';
+  if(/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+  return !!(navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform || ''));   // iPadOS reports as a Mac
+}
+
+// wa.me/<number> opens that exact chat: straight into the WhatsApp app on phones, and on
+// desktop into the WhatsApp desktop app or WhatsApp Web. Returns false only if it could
+// not be opened at all (desktop pop-up blocker).
+// Message used when the PDF has been uploaded: the customer gets a tap-to-open link.
+function billLinkMessage(inv, url){
+  var m = inv.model;
+  return 'Hello ' + m.customer.name + ', your Bhati Farms bill for ' + m.period + ' is ' + Invoice.inr(m.grandTotal) +
+         '. Download your PDF invoice here: ' + url + ' Thank you!';
+}
+// Message used when no link is available and you attach the PDF by hand (never claims it is attached).
+function billManualCaption(inv){
+  var m = inv.model;
+  return 'Hello ' + m.customer.name + ', your Bhati Farms bill for ' + m.period + ' is ' + Invoice.inr(m.grandTotal) +
+         '. Sending you the PDF invoice now. Thank you!';
+}
+
+// preWin: a window opened earlier in the same tap (see sendBillWhatsApp) that we now point at the chat.
+function openWhatsAppChat(number, text, preWin){
   var url = 'https://wa.me/' + number + '?text=' + encodeURIComponent(text);
+  if(preWin && !preWin.closed){
+    try{ preWin.location.href = url; return true; }catch(e){}
+  }
   var w = null;
   try{ w = window.open(url, '_blank'); }catch(e){ w = null; }
-  if(w){ try{ w.opener = null; }catch(e){} }
-  return !!w;
+  if(w){ try{ w.opener = null; }catch(e){} return true; }
+  if(isMobileDevice()){ window.location.href = url; return true; }   // pop-up blocked on a phone: open in this tab instead
+  return false;
 }
 
 async function sendBillWhatsApp(custId){
@@ -2666,7 +2707,7 @@ async function sendBillWhatsApp(custId){
   if(!num.ok){
     toast(num.reason === 'missing'
       ? 'Customer mobile number is not available.'
-      : 'Customer mobile number is invalid ("' + String(c.mobile) + '"). Please correct it in the customer profile.', 'err');
+      : 'Customer mobile number is invalid ("' + String(c.mobile) + '\"). Please correct it in the customer profile.', 'err');
     return;
   }
 
@@ -2699,26 +2740,55 @@ async function sendBillWhatsApp(custId){
       }
     }
 
-    // 1) Share sheet with the PDF attached (phones, Safari, Chrome on Windows/ChromeOS)
-    var file = null;
-    try{ file = new File([blob], inv.filename, { type:'application/pdf' }); }catch(e){ file = null; }
-    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
-      try{
-        await navigator.share({ files:[file], title:inv.title, text:caption });
-        toast('Choose WhatsApp \u2192 ' + c.name + ' (' + pretty + ') to send the PDF', 'ok');
-        return;
-      }catch(err){
-        if(err && err.name === 'AbortError'){ toast('Sharing cancelled', ''); return; }
-        console.warn('navigator.share failed, using download + chat fallback', err);
+    // Optional legacy path: share sheet with the PDF attached (contact must be picked by hand)
+    if(WHATSAPP_SHARE_FIRST){
+      var file = null;
+      try{ file = new File([blob], inv.filename, { type:'application/pdf' }); }catch(e){ file = null; }
+      if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+        try{
+          await navigator.share({ files:[file], title:inv.title, text:caption });
+          toast('Choose WhatsApp \u2192 ' + c.name + ' (' + pretty + ') to send the PDF', 'ok');
+          return;
+        }catch(err){
+          if(err && err.name === 'AbortError'){ toast('Sharing cancelled', ''); return; }
+          console.warn('navigator.share failed, using direct chat instead', err);
+        }
       }
     }
 
-    // 2) Fallback: save the PDF, open the customer's chat, attach the file
+    // Default: put the PDF where the customer can open it with one tap.
+    //   1. Open the chat window right now (inside the tap) so browsers don't block it while we upload.
+    //   2. Upload the PDF to Google Drive through the Apps Script backend (see whatsapp_bill_link.gs).
+    //   3. Point the window at the customer's chat with a message that contains the PDF link.
+    // You only have to press Send in WhatsApp. If the upload is not set up or fails, we fall back to
+    // saving the PDF on this device and opening the chat so you can attach it by hand.
+    var preWin = null;
+    if(WHATSAPP_UPLOAD_LINK){
+      try{ preWin = window.open('', '_blank'); if(preWin){ try{ preWin.opener = null; }catch(e){} } }catch(e){ preWin = null; }
+      try{
+        toast('Preparing PDF link for ' + c.name + '...', '');
+        var up = await sheetRequest('uploadBillPDF', {
+          custId: c.id, filename: inv.filename, pdfBase64: await Invoice.blobToBase64(blob)
+        });
+        if(!up || !up.success || !up.url) throw new Error((up && up.error) || 'PDF upload is not set up on the backend yet');
+        if(openWhatsAppChat(num.number, billLinkMessage(inv, up.url), preWin)){
+          toast('Chat with ' + c.name + ' opened with the PDF link - just press Send', 'ok');
+          return;
+        }
+        toast('Pop-ups are blocked. Allow pop-ups for this site and try again.', 'warn');
+        return;
+      }catch(err){
+        console.warn('PDF link upload failed, using manual attach instead', err);
+        toast('Could not create the PDF link (' + (err.message || err) + '). Opening chat so you can attach the PDF.', 'warn');
+      }
+    }
+
+    // Fallback: save the PDF on this device and open the customer's chat on their saved number.
     Invoice.download(blob, inv.filename);
-    var opened = openWhatsAppChat(num.number, caption);
+    var opened = openWhatsAppChat(num.number, billManualCaption(inv), preWin);
     toast(opened
-      ? 'PDF downloaded. In the WhatsApp chat for ' + c.name + ' tap Attach \u2192 Document and pick ' + inv.filename
-      : 'PDF downloaded. Pop-ups are blocked, so open WhatsApp for ' + pretty + ' and attach ' + inv.filename, opened ? 'ok' : 'warn');
+      ? 'PDF saved. In the ' + c.name + ' chat tap Attach \u2192 Document and pick ' + inv.filename
+      : 'PDF saved. Pop-ups are blocked, so open WhatsApp for ' + pretty + ' and attach ' + inv.filename, opened ? 'ok' : 'warn');
   }finally{
     delete _waBusy[custId];
   }

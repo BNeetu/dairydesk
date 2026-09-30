@@ -39,7 +39,7 @@ function doPost(e){
   }
   var lock = null;
   try{
-    if(API_KEY && (WRITE_ACTIONS.indexOf(action) !== -1 || action === 'sendWhatsAppBill')){
+    if(API_KEY && (WRITE_ACTIONS.indexOf(action) !== -1 || action === 'sendWhatsAppBill' || action === 'uploadBillPDF')){
       if(!payload || payload.key !== API_KEY) return jsonResponse({ success:false, error:'Invalid API key' });
     }
     // One write at a time: row numbers can't shift under a concurrent request.
@@ -57,6 +57,7 @@ function doPost(e){
       case 'deleteDelivery': return deleteDelivery(payload && payload.id);
       case 'save': return saveFullState(payload);
       case 'sendWhatsAppBill': return sendWhatsAppBill(payload);
+      case 'uploadBillPDF': return jsonResponse(uploadBillPDF_(payload));
       default: return jsonResponse({ success:false, error:'Unknown POST action' });
     }
   }catch(err){
@@ -517,4 +518,49 @@ function sendWhatsAppBillPDF_(p) {
       { type: 'body', parameters: [txt(t.name), txt(t.period), txt(t.amount)] }
     ] } });
   return res.ok ? { success: true } : { success: false, error: 'WhatsApp template send failed: ' + res.text };
+}
+/**
+ * Bhati Farms - "WhatsApp Bill" PDF link
+ * Saves the bill PDF to Google Drive and returns a link that is put in the WhatsApp message.
+ *
+ * SETUP (2 minutes):
+ *  1. Open your Apps Script project (the one behind SHEETS_API_URL) and paste this whole file
+ *     in as a new file, e.g. "whatsapp_bill_link.gs".
+ *  2. In your EXISTING doPost(e), add these lines at the very top:
+ *
+ *        if (e && e.parameter && e.parameter.action === 'uploadBillPDF') {
+ *          return handleUploadBillPDF(e);
+ *        }
+ *
+ *  3. Deploy > Manage deployments > pencil icon > Version: "New version" > Deploy.
+ *     (Keep the same deployment so the web-app URL does not change.)
+ *  4. The first time, Google asks you to authorise Drive access - accept it.
+ *     If it does not ask, run uploadBillPDF_ once from the editor to trigger the prompt.
+ *
+ * NOTE: files are shared as "anyone with the link can view". The link is long and unguessable,
+ * but anyone the customer forwards it to can open the bill.
+ */
+var BILL_FOLDER_NAME = 'Bhati Farms Bills';
+
+function handleUploadBillPDF(e) {
+  var out;
+  try {
+    var payload = JSON.parse((e.parameter && e.parameter.payload) || '{}');
+    out = uploadBillPDF_(payload);
+  } catch (err) {
+    out = { success: false, error: String(err && err.message || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function uploadBillPDF_(p) {
+  if (!p || !p.pdfBase64) throw new Error('No PDF received');
+  var name = String(p.filename || 'Invoice.pdf').replace(/[^\w.\- ]+/g, '_');
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.pdfBase64), 'application/pdf', name);
+  var it = DriveApp.getFoldersByName(BILL_FOLDER_NAME);
+  var folder = it.hasNext() ? it.next() : DriveApp.createFolder(BILL_FOLDER_NAME);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { success: true, id: file.getId(), url: 'https://drive.google.com/file/d/' + file.getId() + '/view' };
 }

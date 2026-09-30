@@ -24,7 +24,7 @@ function calcAmount(product, qty){
 // ═════════════════════════════════════════════════════════════=
 //  PERSISTENCE + GOOGLE SHEETS SYNC
 // ═════════════════════════════════════════════════════════════=
-var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbzLqi0-Gr1GkqWpU8Aex4RavawLeALUYlZkBh4-EuMzx0ULk9w0hm3TQQX3FGyJbUPziA/exec';
+var SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbyRtpcvt726OCpssi-I95wolc1oKgwnhYLl-nmL0tqRn3xwyVfdOD7hc1ORZMEMh7Fu/exec';
 var SHEETS_ENABLED = !!SHEETS_API_URL && !SHEETS_API_URL.includes('REPLACE');
 var SEED_VERSION = 1;
 
