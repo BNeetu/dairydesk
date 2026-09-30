@@ -450,3 +450,71 @@ function sendWhatsAppBill(data){
   }
   return jsonResponse({ success:false, error: (json.error && json.error.message) || ('WhatsApp API error (HTTP ' + code + ')') });
 }
+/**
+ * OPTIONAL — only needed if you set  WHATSAPP_MODE = 'api'  in billing.js.
+ * It lets the app send the PDF bill straight to the customer's WhatsApp number,
+ * with no tapping in WhatsApp. It needs a WhatsApp Business (Cloud API) account.
+ *
+ * NOTE: written against Meta's documented Cloud API but NOT tested against a live
+ * account (that needs your credentials). Test it with your own number first.
+ *
+ * SETUP
+ * 1. Paste this function into your Apps Script project (next to your existing Code.gs).
+ * 2. In your doPost action switch add:
+ *        case 'sendWhatsAppBillPDF': return json_(sendWhatsAppBillPDF_(payload));
+ *    (use whatever your existing JSON-response helper is called).
+ * 3. Project Settings -> Script properties, add:
+ *        WA_TOKEN            permanent access token from Meta
+ *        WA_PHONE_NUMBER_ID  the WhatsApp phone-number ID
+ *        WA_TEMPLATE_NAME    (optional) approved template that has a DOCUMENT header and
+ *                            3 body variables: {{1}} customer name, {{2}} period, {{3}} amount
+ *        WA_TEMPLATE_LANG    (optional) template language code, default "en"
+ * 4. Redeploy the web app (new version).
+ *
+ * WhatsApp rule: a plain document message is only delivered if the customer wrote to your
+ * number in the last 24 hours. Otherwise WhatsApp requires an approved template — that is
+ * what WA_TEMPLATE_NAME is for.
+ */
+function sendWhatsAppBillPDF_(p) {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('WA_TOKEN'), phoneId = props.getProperty('WA_PHONE_NUMBER_ID');
+  if (!token || !phoneId) return { success: false, error: 'WhatsApp API is not configured (WA_TOKEN / WA_PHONE_NUMBER_ID)' };
+  if (!p || !p.pdfBase64 || !p.to) return { success: false, error: 'Missing PDF or phone number' };
+
+  var base = 'https://graph.facebook.com/v20.0/' + phoneId;
+  var pdf = Utilities.newBlob(Utilities.base64Decode(p.pdfBase64), 'application/pdf', p.filename || 'bill.pdf');
+
+  // 1) upload the PDF
+  var up = UrlFetchApp.fetch(base + '/media', {
+    method: 'post', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true,
+    payload: { messaging_product: 'whatsapp', type: 'application/pdf', file: pdf }
+  });
+  var upJson = JSON.parse(up.getContentText() || '{}');
+  if (!upJson.id) return { success: false, error: 'Media upload failed: ' + up.getContentText() };
+
+  function send(body) {
+    var r = UrlFetchApp.fetch(base + '/messages', {
+      method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify(body), muteHttpExceptions: true
+    });
+    return { ok: r.getResponseCode() >= 200 && r.getResponseCode() < 300, text: r.getContentText() };
+  }
+
+  // 2) send as a document (works inside the 24h customer-service window)
+  var res = send({ messaging_product: 'whatsapp', to: p.to, type: 'document',
+                   document: { id: upJson.id, filename: p.filename || 'bill.pdf', caption: p.caption || '' } });
+  if (res.ok) return { success: true };
+
+  // 3) outside the window: approved template with a document header
+  var tpl = props.getProperty('WA_TEMPLATE_NAME');
+  if (!tpl) return { success: false, error: 'WhatsApp rejected the message: ' + res.text };
+  var t = p.tpl || {};
+  var txt = function (v) { return { type: 'text', text: String(v || '-') }; };
+  res = send({ messaging_product: 'whatsapp', to: p.to, type: 'template', template: {
+    name: tpl, language: { code: props.getProperty('WA_TEMPLATE_LANG') || 'en' },
+    components: [
+      { type: 'header', parameters: [{ type: 'document', document: { id: upJson.id, filename: p.filename || 'bill.pdf' } }] },
+      { type: 'body', parameters: [txt(t.name), txt(t.period), txt(t.amount)] }
+    ] } });
+  return res.ok ? { success: true } : { success: false, error: 'WhatsApp template send failed: ' + res.text };
+}
