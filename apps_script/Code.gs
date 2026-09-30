@@ -1,5 +1,4 @@
-// Code.gs — Google Apps Script Web App for DairyDesk
-// Set the spreadsheet ID to the Google Sheet you shared
+// Code.gs — Google Apps Script Web App for DairyDesk (corrected)
 var SPREADSHEET_ID = '1RCQ6S38hhsMKUm1C3k8hgj_juLdnONljMsAlKzlPadk';
 var SHEET_CUSTOMERS = 'Customers';
 var SHEET_DELIVERIES = 'Deliveries';
@@ -7,12 +6,14 @@ var SHEET_ACTIVITY = 'Activity';
 var SHEET_PRICING = 'Pricing';
 
 // Optional simple API key protection. If empty, no key is required.
-var API_KEY = ''; // set to a secret string before deployment for write protection
+var API_KEY = '';
 
 var CUSTOMER_HEADERS = ['id','name','mobile','address','pref','status','regDate','notes'];
 var DELIVERY_HEADERS = ['id','date','custId','custName','slot','product','qty','amount'];
 var ACTIVITY_HEADERS = ['type','msg','time'];
 var PRICING_HEADERS = ['product','unit','price','step','note'];
+
+var WRITE_ACTIONS = ['appendCustomer','updateCustomer','deleteCustomer','appendDelivery','updateDelivery','deleteDelivery','save'];
 
 function doGet(e){
   var action = (e.parameter && e.parameter.action) || 'load';
@@ -36,10 +37,15 @@ function doPost(e){
   if(e.parameter && e.parameter.payload){
     try{ payload = JSON.parse(e.parameter.payload); } catch(ex){ payload = {}; }
   }
+  var lock = null;
   try{
-    // Protect write actions with API key if configured
-    if(API_KEY && ['appendCustomer','updateCustomer','deleteCustomer','appendDelivery','updateDelivery','deleteDelivery','save'].indexOf(action) !== -1){
+    if(API_KEY && WRITE_ACTIONS.indexOf(action) !== -1){
       if(!payload || payload.key !== API_KEY) return jsonResponse({ success:false, error:'Invalid API key' });
+    }
+    // One write at a time: row numbers can't shift under a concurrent request.
+    if(WRITE_ACTIONS.indexOf(action) !== -1){
+      lock = LockService.getScriptLock();
+      lock.waitLock(25000);
     }
 
     switch(action){
@@ -53,23 +59,38 @@ function doPost(e){
       default: return jsonResponse({ success:false, error:'Unknown POST action' });
     }
   }catch(err){
-    return jsonResponse({ success:false, error: String(err) });
+    return jsonResponse({ success:false, error: String(err && err.message ? err.message : err) });
+  }finally{
+    if(lock) lock.releaseLock();
   }
 }
 
 // ---------- helpers ----------
 function jsonResponse(obj){
   var output = ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-  output.setHeader('Access-Control-Allow-Origin', '*');
-  output.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  output.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if(typeof output.setHeader === 'function'){
+    output.setHeader('Access-Control-Allow-Origin', '*');
+    output.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    output.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
   return output;
 }
 
 function openSheet(){ return SpreadsheetApp.openById(SPREADSHEET_ID); }
 
+// The timezone the SPREADSHEET uses to interpret dates. (Session.getScriptTimeZone()
+// can differ from it, which shifted dates by a day.)
+function sheetTz(){ return openSheet().getSpreadsheetTimeZone(); }
+
+function dateOut(v, tz){
+  if(v instanceof Date) return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  var s = String(v == null ? '' : v).trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0,10) : s;
+}
+
 function sheetToObjects(sheetName, headers){
   var ss = openSheet();
+  var tz = ss.getSpreadsheetTimeZone();
   var sh = ss.getSheetByName(sheetName);
   if(!sh) return [];
   var vals = sh.getDataRange().getValues();
@@ -88,6 +109,11 @@ function sheetToObjects(sheetName, headers){
     return [];
   }
 
+  // skip completely blank rows (they showed up as empty deliveries that could not be edited/deleted)
+  if(sheetName === SHEET_CUSTOMERS || sheetName === SHEET_DELIVERIES){
+    rows = rows.filter(function(r){ return String(r[0]).trim() !== ''; });
+  }
+
   return rows.map(function(r){
     var o = {};
     for(var i=0;i<headers.length;i++){
@@ -95,7 +121,7 @@ function sheetToObjects(sheetName, headers){
       if(value === ''){
         o[headers[i]] = '';
       } else if(value instanceof Date){
-        o[headers[i]] = Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        o[headers[i]] = Utilities.formatDate(value, tz, 'yyyy-MM-dd');
       } else {
         o[headers[i]] = value;
       }
@@ -127,6 +153,17 @@ function objectFromPricing(rows){
   return p;
 }
 
+// Rows (1-based sheet row numbers) whose id column equals `id`
+function findRowsById(sh, id){
+  var last = sh.getLastRow();
+  if(last < 2) return [];
+  var want = String(id).trim(), hits = [];
+  sh.getRange(2, 1, last - 1, 1).getValues().forEach(function(r, i){
+    if(String(r[0]).trim() === want) hits.push(i + 2);
+  });
+  return hits;
+}
+
 // ---------- Customer operations ----------
 function appendCustomer(data){
   var ss = openSheet();
@@ -145,7 +182,9 @@ function appendCustomer(data){
     data.regDate || '',
     data.notes || ''
   ];
-  sh.appendRow(row);
+  var next = sh.getLastRow() + 1;
+  sh.getRange(next, 7).setNumberFormat('@');           // regDate stays plain text
+  sh.getRange(next, 1, 1, row.length).setValues([row]);
   return jsonResponse({ success:true, id: newId });
 }
 
@@ -154,24 +193,25 @@ function updateCustomer(data){
   var ss = openSheet();
   var sh = ss.getSheetByName(SHEET_CUSTOMERS);
   if(!sh) return jsonResponse({ success:false, error:'Customers sheet missing' });
-  var vals = sh.getDataRange().getValues();
-  for(var i=1;i<vals.length;i++){
-    if(String(vals[i][0]) === String(data.id)){
-      var newRow = [
-        data.id,
-        data.name || vals[i][1] || '',
-        data.mobile || vals[i][2] || '',
-        data.address || vals[i][3] || '',
-        data.pref || vals[i][4] || '',
-        data.status || vals[i][5] || '',
-        data.regDate || vals[i][6] || '',
-        data.notes || vals[i][7] || ''
-      ];
-      sh.getRange(i+1,1,1,newRow.length).setValues([newRow]);
-      return jsonResponse({ success:true, id: data.id });
-    }
-  }
-  return jsonResponse({ success:false, error:'Customer id not found' });
+  var tz = ss.getSpreadsheetTimeZone();
+  var hits = findRowsById(sh, data.id);
+  if(!hits.length) return jsonResponse({ success:false, error:'Customer id not found' });
+  if(hits.length > 1) return jsonResponse({ success:false, error:'Duplicate customer id: ' + data.id });
+  var r = hits[0];
+  var cur = sh.getRange(r, 1, 1, CUSTOMER_HEADERS.length).getValues()[0];
+  var newRow = [
+    data.id,
+    data.name || cur[1] || '',
+    data.mobile || cur[2] || '',
+    data.address || cur[3] || '',
+    data.pref || cur[4] || '',
+    data.status || cur[5] || '',
+    data.regDate || dateOut(cur[6], tz) || '',
+    data.notes || cur[7] || ''
+  ];
+  sh.getRange(r, 7).setNumberFormat('@');
+  sh.getRange(r, 1, 1, newRow.length).setValues([newRow]);
+  return jsonResponse({ success:true, id: data.id });
 }
 
 function deleteCustomer(id){
@@ -181,7 +221,7 @@ function deleteCustomer(id){
   if(!sh) return jsonResponse({ success:false, error:'Customers sheet missing' });
   var vals = sh.getDataRange().getValues();
   for(var i=vals.length-1;i>=1;i--){
-    if(String(vals[i][0]) === String(id)){
+    if(String(vals[i][0]).trim() === String(id).trim()){
       sh.deleteRow(i+1);
     }
   }
@@ -189,7 +229,7 @@ function deleteCustomer(id){
   if(ds){
     var dvals = ds.getDataRange().getValues();
     for(var j=dvals.length-1;j>=1;j--){
-      if(String(dvals[j][2]) === String(id)){
+      if(String(dvals[j][2]).trim() === String(id).trim()){
         ds.deleteRow(j+1);
       }
     }
@@ -197,51 +237,53 @@ function deleteCustomer(id){
   return jsonResponse({ success:true, id: id });
 }
 
-// ---------- Delivery ops (basic) ----------
+// ---------- Delivery operations ----------
+// Every delivery is addressed ONLY by its id. Date is stored as TEXT "YYYY-MM-DD".
+function cleanDelivery(p){
+  var id = String((p && p.id) || '').trim() || ('DEL_' + Utilities.getUuid().replace(/-/g,'').slice(0,10));
+  var date = String((p && p.date) || '').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid date: ' + (p && p.date));
+  var qty = Number(p.qty);
+  if(!(qty > 0)) throw new Error('Invalid quantity: ' + p.qty);
+  var amount = Number(p.amount);
+  if(!isFinite(amount) || amount < 0) amount = Math.round(qty * (Number(p.rate) || 0) * 100) / 100;
+  return { id:id, date:date, custId:String(p.custId||''), custName:String(p.custName||''),
+           slot:String(p.slot||''), product:String(p.product||''), qty:qty, amount:amount };
+}
+
+function deliveryRowToObj(r, tz){
+  return { id:String(r[0]).trim(), date:dateOut(r[1], tz), custId:String(r[2]), custName:String(r[3]),
+           slot:String(r[4]), product:String(r[5]), qty:Number(r[6])||0, amount:Number(r[7])||0 };
+}
+
 function appendDelivery(data){
+  var d = cleanDelivery(data);
   var ss = openSheet();
   var sh = ss.getSheetByName(SHEET_DELIVERIES) || ss.insertSheet(SHEET_DELIVERIES);
   ensureHeaders(sh, DELIVERY_HEADERS);
-  var ids = sheetToObjects(SHEET_DELIVERIES, DELIVERY_HEADERS).map(function(r){ return r.id; });
-  var maxNum = ids.reduce(function(m,id){ try{ return Math.max(m, parseInt((id||'').split('-')[1]||0)); }catch(e){return m;} }, 0);
-  var newId = data.id || ('DEL-' + String(maxNum+1));
-  var row = [
-    newId,
-    data.date || '',
-    data.custId || '',
-    data.custName || '',
-    data.slot || '',
-    data.product || '',
-    data.qty || '',
-    data.amount || ''
-  ];
-  sh.appendRow(row);
-  return jsonResponse({ success:true, id: newId });
+  if(findRowsById(sh, d.id).length) return jsonResponse({ success:true, id:d.id, duplicate:true }); // retry-safe
+  var next = sh.getLastRow() + 1;
+  sh.getRange(next, 2).setNumberFormat('@');
+  sh.getRange(next, 1, 1, DELIVERY_HEADERS.length).setValues([[d.id,d.date,d.custId,d.custName,d.slot,d.product,d.qty,d.amount]]);
+  SpreadsheetApp.flush();
+  return jsonResponse({ success:true, id:d.id, row:next });
 }
 
 function updateDelivery(data){
   if(!data || !data.id) return jsonResponse({ success:false, error:'Missing id' });
+  var d = cleanDelivery(data);
   var ss = openSheet();
   var sh = ss.getSheetByName(SHEET_DELIVERIES);
   if(!sh) return jsonResponse({ success:false, error:'Deliveries sheet missing' });
-  var vals = sh.getDataRange().getValues();
-  for(var i=1;i<vals.length;i++){
-    if(String(vals[i][0]) === String(data.id)){
-      var newRow = [
-        data.id,
-        data.date || vals[i][1] || '',
-        data.custId || vals[i][2] || '',
-        data.custName || vals[i][3] || '',
-        data.slot || vals[i][4] || '',
-        data.product || vals[i][5] || '',
-        data.qty || vals[i][6] || '',
-        data.amount || vals[i][7] || ''
-      ];
-      sh.getRange(i+1,1,1,newRow.length).setValues([newRow]);
-      return jsonResponse({ success:true, id: data.id });
-    }
-  }
-  return jsonResponse({ success:false, error:'Delivery id not found' });
+  var hits = findRowsById(sh, d.id);
+  if(hits.length === 0) return jsonResponse({ success:false, error:'Delivery not found in sheet: ' + d.id });
+  if(hits.length > 1) return jsonResponse({ success:false, error:'Duplicate delivery id (' + d.id + ') - run repairDeliveryIds()' });
+  var r = hits[0];
+  sh.getRange(r, 2).setNumberFormat('@');
+  sh.getRange(r, 1, 1, DELIVERY_HEADERS.length).setValues([[d.id,d.date,d.custId,d.custName,d.slot,d.product,d.qty,d.amount]]);
+  SpreadsheetApp.flush();
+  var stored = sh.getRange(r, 1, 1, DELIVERY_HEADERS.length).getValues()[0];
+  return jsonResponse({ success:true, id:d.id, row:r, delivery: deliveryRowToObj(stored, ss.getSpreadsheetTimeZone()) });
 }
 
 function deleteDelivery(id){
@@ -249,69 +291,72 @@ function deleteDelivery(id){
   var ss = openSheet();
   var sh = ss.getSheetByName(SHEET_DELIVERIES);
   if(!sh) return jsonResponse({ success:false, error:'Deliveries sheet missing' });
-  var vals = sh.getDataRange().getValues();
-  for(var i=vals.length-1;i>=1;i--){
-    if(String(vals[i][0]) === String(id)){
-      sh.deleteRow(i+1);
-    }
-  }
-  return jsonResponse({ success:true, id: id });
+  var hits = findRowsById(sh, id);
+  // Old code returned success:true here even when nothing was deleted -> row reappeared on refresh.
+  if(hits.length === 0) return jsonResponse({ success:false, error:'Delivery not found in sheet: ' + id });
+  if(hits.length > 1) return jsonResponse({ success:false, error:'Duplicate delivery id (' + id + ') - run repairDeliveryIds()' });
+  sh.deleteRow(hits[0]);
+  SpreadsheetApp.flush();
+  return jsonResponse({ success:true, id:id, deletedRow:hits[0] });
 }
 
-// ---------- Save / backup full state (optional) ----------
+// ---------- Save / backup full state ----------
+// Only customers are written here. Deliveries are NEVER touched by a full-state save.
 function saveFullState(payload){
   var ss = openSheet();
-  if(payload.customers && Array.isArray(payload.customers)){
+  // An empty list means "the browser has nothing loaded", not "delete everyone".
+  if(payload.customers && Array.isArray(payload.customers) && payload.customers.length){
     var sh = ss.getSheetByName(SHEET_CUSTOMERS) || ss.insertSheet(SHEET_CUSTOMERS);
     sh.clearContents();
     sh.appendRow(CUSTOMER_HEADERS);
     var rows = payload.customers.map(function(c){
-      return [
-        c.id || '',
-        c.name || '',
-        c.mobile || '',
-        c.address || '',
-        c.pref || '',
-        c.status || '',
-        c.regDate || '',
-        c.notes || ''
-      ];
+      return [c.id || '', c.name || '', c.mobile || '', c.address || '', c.pref || '', c.status || '', c.regDate || '', c.notes || ''];
     });
-    if(rows.length) sh.getRange(2,1,rows.length,rows[0].length).setValues(rows);
-  }
-  if(payload.deliveries && Array.isArray(payload.deliveries)){
-    var sh2 = ss.getSheetByName(SHEET_DELIVERIES) || ss.insertSheet(SHEET_DELIVERIES);
-    sh2.clearContents();
-    sh2.appendRow(DELIVERY_HEADERS);
-    var drows = payload.deliveries.map(function(d){
-      return [
-        d.id || '',
-        d.date || '',
-        d.custId || '',
-        d.custName || '',
-        d.slot || '',
-        d.product || '',
-        d.qty || '',
-        d.amount || ''
-      ];
-    });
-    if(drows.length) sh2.getRange(2,1,drows.length,drows[0].length).setValues(drows);
+    sh.getRange(2, 7, rows.length, 1).setNumberFormat('@');
+    sh.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   }
   return jsonResponse({ success:true });
 }
 
 // ---------- util ----------
+// Never clears the sheet. (The old version called clearContents() when the header row
+// didn't match exactly, which could wipe every delivery.)
 function ensureHeaders(sheet, headers){
-  var firstRow = sheet.getRange(1,1,1,headers.length).getValues()[0];
-  var hasHeaders = headers.every(function(h,i){ return String(firstRow[i]||'').trim() === h; });
-  if(hasHeaders) return;
-
-  if(isDataRow(firstRow, headers)){
-    sheet.insertRowBefore(1);
-    sheet.getRange(1,1,headers.length).setValues([headers]);
+  if(sheet.getLastRow() === 0){
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     return;
   }
+  var firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  var matches = headers.every(function(h,i){ return normalizeHeaderCell(firstRow[i]) === normalizeHeaderCell(h); });
+  if(matches) return;
+  if(/^(CUST|DEL)[-_]/i.test(String(firstRow[0] || '').trim())){   // row 1 is real data, no header row yet
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+}
 
-  sheet.clearContents();
-  sheet.appendRow(headers);
+// ---------- ONE-TIME CLEANUP: run each once from the Apps Script editor ----------
+// Gives every blank or duplicated delivery id a fresh unique id.
+function repairDeliveryIds(){
+  var sh = openSheet().getSheetByName(SHEET_DELIVERIES);
+  if(!sh || sh.getLastRow() < 2) return;
+  var rng = sh.getRange(2, 1, sh.getLastRow() - 1, 1), vals = rng.getValues(), seen = {}, fixed = 0;
+  vals.forEach(function(r){
+    var id = String(r[0]).trim();
+    if(!id || seen[id]){ id = 'DEL_' + Utilities.getUuid().replace(/-/g,'').slice(0,10); r[0] = id; fixed++; }
+    seen[id] = true;
+  });
+  rng.setValues(vals);
+  Logger.log('Repaired ' + fixed + ' delivery id(s)');
+}
+
+// Converts existing Date cells in the Deliveries date column to plain "YYYY-MM-DD" text.
+function convertDateColumnToText(){
+  var ss = openSheet(), sh = ss.getSheetByName(SHEET_DELIVERIES), tz = ss.getSpreadsheetTimeZone();
+  if(!sh || sh.getLastRow() < 2) return;
+  var rng = sh.getRange(2, 2, sh.getLastRow() - 1, 1);
+  var out = rng.getValues().map(function(r){ return [dateOut(r[0], tz)]; });
+  rng.setNumberFormat('@');
+  rng.setValues(out);
+  Logger.log('Converted ' + out.length + ' date cell(s) to text');
 }

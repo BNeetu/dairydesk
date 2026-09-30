@@ -113,7 +113,8 @@ function saveDelivery(){
     if(fromEl && (!fromEl.value || d.date < fromEl.value)) fromEl.value = d.date;
   });
 
-  persist();
+  persistLocalOnly();
+  appendDeliveriesRemote(added).catch(function(){ toast('Delivery saved on this device but could not sync to Google Sheets', 'err'); });
   closeModal('deliveryModal');
   var totalAmt = sumAmount(added);
   toast('✅ Delivery recorded for ' + c.name + ' — ' + money(totalAmt), 'ok');
@@ -121,12 +122,28 @@ function saveDelivery(){
   refreshAllViews();
 }
 
-function deleteDelivery(id){
+var _busyDelIds = {};
+// Server first, local second. The row only disappears from the UI once the sheet
+// confirms it is gone, so a refresh can never bring back something the UI said was deleted.
+async function deleteDelivery(id){
+  if(_busyDelIds[id]) return;
+  var d = deliveries.find(function(x){ return x.id === id; });
+  if(!d) return;
   if(!confirm('Delete this delivery record?')) return;
-  deliveries = deliveries.filter(function(d){ return d.id !== id; });
-  persist();
-  toast('Delivery deleted', 'err');
-  refreshAllViews();
+  _busyDelIds[id] = true;
+  try{
+    toast('Deleting...', '');
+    await deleteDeliveryRemote(id);
+    deliveries = deliveries.filter(function(x){ return x.id !== id; });
+    persistLocalOnly();
+    toast('Delivery deleted', 'err');
+    refreshAllViews();
+  }catch(err){
+    console.error('deleteDelivery failed', err);
+    toast('Delete failed - nothing was removed: ' + (err.message || err), 'err');
+  }finally{
+    delete _busyDelIds[id];
+  }
 }
 
 function initDeliveryFilters(){
@@ -423,7 +440,8 @@ function saveBackdated(){
   if(fromEl && fromEl.value && dates[0] < fromEl.value) fromEl.value = dates[0];
   if(toEl && toEl.value && dates[dates.length-1] > toEl.value) toEl.value = dates[dates.length-1];
 
-  persist();
+  persistLocalOnly();
+  appendDeliveriesRemote(added).catch(function(){ toast('Backdated deliveries saved on this device but could not sync to Google Sheets', 'err'); });
   var origin = bdFixedCust;
   closeModal('backdatedModal');
   var totalAmt = sumAmount(added);
@@ -464,8 +482,11 @@ function updateEditAmount(){
   var q = parseFloat(document.getElementById('ed-qty').value) || 0, r = parseFloat(document.getElementById('ed-rate').value) || 0;
   document.getElementById('ed-amt').textContent = money(round2(q * r));
 }
-function saveEditedDelivery(){
-  var i = deliveries.findIndex(function(x){ return x.id === editingDelId; });
+var _savingEdit = false;
+async function saveEditedDelivery(){
+  if(_savingEdit) return;
+  var id = editingDelId;                       // capture: never re-read the global after an await
+  var i = deliveries.findIndex(function(x){ return x.id === id; });
   if(i < 0) return;
   var date = document.getElementById('ed-date').value, slot = document.getElementById('ed-slot').value;
   var product = document.getElementById('ed-product').value;
@@ -473,15 +494,40 @@ function saveEditedDelivery(){
   if(!date){ toast('Please choose a date', 'err'); return; }
   if(!(qty > 0) || !(rate > 0)){ toast('Enter a valid quantity and unit price', 'err'); return; }
   var old = deliveries[i];
-  var clash = deliveries.some(function(x){ return x.id !== old.id && x.custId === old.custId && x.date === date && x.slot === slot && x.product === product; });
+  var clash = deliveries.some(function(x){ return x.id !== id && x.custId === old.custId && x.date === date && x.slot === slot && x.product === product; });
   if(clash && !confirm('This customer already has a ' + product + ' delivery on ' + fmtDate(date) + ' (' + slot + '). Save anyway?')) return;
-  deliveries[i] = normalizeDelivery(Object.assign({}, old, { date: date, slot: slot, product: product, qty: qty, rate: rate, amount: round2(qty * rate) }));
-  var fromEl = document.getElementById('delFilterFrom'), toEl = document.getElementById('delFilterTo');
-  if(fromEl && fromEl.value && date < fromEl.value) fromEl.value = date;
-  if(toEl && toEl.value && date > toEl.value) toEl.value = date;
-  persist();
-  closeModal('editDelModal');
-  toast('Delivery updated — ' + money(deliveries[i].amount), 'ok');
-  logActivity('delivery', 'Delivery edited: ' + old.custName + ' (' + fmtDate(date) + ', ' + slot + ') — ' + money(deliveries[i].amount));
-  refreshAllViews();
+
+  var updated = normalizeDelivery(Object.assign({}, old, { date: date, slot: slot, product: product, qty: qty, rate: rate, amount: round2(qty * rate) }));
+
+  _savingEdit = true;
+  try{
+    toast('Saving...', '');
+    var res = await updateDeliveryRemote(updated);           // wait for the sheet
+    // The backend echoes the row it actually stored. If it differs from what we
+    // sent (wrong date / qty), say so instead of silently showing the wrong thing.
+    if(res && res.delivery){
+      var sd = normDate(res.delivery.date), sq = Number(res.delivery.qty);
+      if(sd !== updated.date || sq !== updated.qty){
+        console.warn('Server stored different values than sent', { sent: updated, stored: res.delivery });
+        toast('Server saved ' + fmtDate(sd) + ', qty ' + sq + ' (not what you entered) - check the sheet', 'warn');
+        updated = normalizeDelivery(Object.assign({}, updated, { date: sd, qty: sq }));
+      }
+    }
+    var j = deliveries.findIndex(function(x){ return x.id === id; });   // re-find: array may have changed
+    if(j >= 0) deliveries[j] = updated; else deliveries.push(updated);
+
+    var fromEl = document.getElementById('delFilterFrom'), toEl = document.getElementById('delFilterTo');
+    if(fromEl && fromEl.value && updated.date < fromEl.value) fromEl.value = updated.date;
+    if(toEl && toEl.value && updated.date > toEl.value) toEl.value = updated.date;
+    persistLocalOnly();
+    closeModal('editDelModal');
+    toast('Delivery updated - ' + money(updated.amount), 'ok');
+    logActivity('delivery', 'Delivery edited: ' + old.custName + ' (' + fmtDate(updated.date) + ', ' + slot + ') - ' + money(updated.amount));
+    refreshAllViews();
+  }catch(err){
+    console.error('saveEditedDelivery failed', err);
+    toast('Edit NOT saved: ' + (err.message || err), 'err');     // local row untouched, modal stays open
+  }finally{
+    _savingEdit = false;
+  }
 }

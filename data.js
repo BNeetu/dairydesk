@@ -50,10 +50,15 @@ function sheetRequest(action, payload){
     });
 }
 
+// Bumped every time a delivery is added/edited/deleted. loadRemoteState() uses it to
+// detect that its snapshot went stale while it was in flight.
+var _deliveryMutSeq = 0, _deliveryInflight = 0;
+
 function loadRemoteState(){
   if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
+  var seqAtCall = _deliveryMutSeq;
   // Wait for any in-flight save first, so a load can never overwrite newer local changes
-  return _savePending.then(function(){ return fetch(SHEETS_API_URL + '?action=load'); })
+  return _savePending.then(function(){ return fetch(SHEETS_API_URL + '?action=load&_=' + Date.now()); })
     .then(function(res){
       if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets load failed'); });
       return res.json();
@@ -64,24 +69,19 @@ function loadRemoteState(){
         console.error('Google Sheets returned invalid remote app data', data);
         throw new Error('Remote app data is invalid');
       }
-      // Normalize any date-ish field to a plain YYYY-MM-DD string. Google
-      // Sheets / Apps Script commonly returns date-formatted cells as full
-      // ISO timestamps (e.g. "2026-07-01T00:00:00.000Z") rather than plain
-      // dates. Left as-is, that breaks exact-match filtering (deliveriesOn),
-      // silently fails to populate <input type="date"> fields (they require
-      // strict YYYY-MM-DD and just show empty/placeholder otherwise), and
-      // can produce an invalid Date when other code appends a time suffix.
-      function normDate(s){
-        if(!s) return s;
-        var str = String(s).split('T')[0];
-        return /^\d{4}-\d{2}-\d{2}$/.test(str) ? str : s;
-      }
       customers = data.customers.map(function(c){
         return Object.assign({}, c, { regDate: normDate(c.regDate) });
       });
-      deliveries = data.deliveries.map(function(d){
-        return Object.assign({}, d, { date: normDate(d.date) });
-      });
+      // Only replace local deliveries if NO delivery write happened (or is still in
+      // flight) since this load started. Otherwise this snapshot pre-dates that write
+      // and would resurrect a deleted row / revert an edited one.
+      if(_deliveryMutSeq !== seqAtCall || _deliveryInflight > 0){
+        console.warn('Skipped remote deliveries: local delivery changes happened while loading');
+      } else {
+        deliveries = data.deliveries.map(function(d){
+          return Object.assign({}, d, { date: normDate(d.date) });
+        });
+      }
       activityLog = Array.isArray(data.activityLog) ? data.activityLog : activityLog;
       currentTheme = data.currentTheme || currentTheme;
       if(data.pricing && typeof data.pricing === 'object' && Object.keys(data.pricing).length){
@@ -97,7 +97,6 @@ function saveRemoteState(){
   if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
   return sheetRequest('save', {
     customers: customers,
-    deliveries: deliveries,
     activityLog: activityLog,
     pricing: PRODUCTS,
     currentTheme: currentTheme,
@@ -117,6 +116,32 @@ function loadAppData(){
 }
 
 var _savePending = Promise.resolve(); // saves run one at a time, in order
+function queueDeliveryRemote(action, payload){
+  if(!SHEETS_ENABLED) return Promise.resolve({ success:true });
+  // Snapshot NOW: the request is sent later (after earlier queued saves finish),
+  // and must carry the values as they are at click time.
+  var snapshot = JSON.parse(JSON.stringify(payload || {}));
+  _deliveryMutSeq++; _deliveryInflight++;
+  var operation = _savePending.then(function(){
+    return sheetRequest(action, snapshot).then(function(result){
+      if(!result || !result.success) throw new Error((result && result.error) || 'Delivery sync failed');
+      return result;
+    });
+  });
+  var settle = function(){ _deliveryInflight--; };
+  operation.then(settle, settle);
+  _savePending = operation.catch(function(err){ console.warn('Delivery sync failed:', err); });
+  return operation;
+}
+function appendDeliveryRemote(delivery){ return queueDeliveryRemote('appendDelivery', delivery); }
+function appendDeliveriesRemote(list){
+  return list.reduce(function(promise, delivery){
+    return promise.then(function(){ return appendDeliveryRemote(delivery); });
+  }, Promise.resolve());
+}
+function updateDeliveryRemote(delivery){ return queueDeliveryRemote('updateDelivery', delivery); }
+function deleteDeliveryRemote(id){ return queueDeliveryRemote('deleteDelivery', { id:id }); }
+
 function persist(){
   persistLocalOnly();
   if(SHEETS_ENABLED){
@@ -152,7 +177,22 @@ function deleteCustomerRemote(custId){
   });
 }
 function uid(prefix){ return (prefix||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).substr(2,5); }
-function todayStr(){ return new Date().toISOString().split('T')[0]; }
+// LOCAL calendar date. (toISOString() is UTC: in India, between 00:00 and 05:30
+// it returns YESTERDAY, which shifts default dates and "today" filters.)
+function pad2(n){ return String(n).padStart(2,'0'); }
+function localISO(dt){ return dt.getFullYear() + '-' + pad2(dt.getMonth()+1) + '-' + pad2(dt.getDate()); }
+function todayStr(){ return localISO(new Date()); }
+// Normalize any date-ish value to YYYY-MM-DD. Plain dates pass through untouched.
+// Full timestamps ("2026-06-30T18:30:00.000Z", which is what a Sheets Date cell
+// serializes to) are converted to the LOCAL calendar day. The old split('T')[0]
+// returned the UTC day, i.e. one day off for any IST midnight.
+function normDate(s){
+  if(s === null || typeof s === 'undefined' || s === '') return s;
+  var str = String(s).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  var dt = new Date(str);
+  return isNaN(dt.getTime()) ? str : localISO(dt);
+}
 // Escape user-entered text (customer names, addresses, notes, etc.) before
 // inserting it into innerHTML, so special characters like < > & " ' render
 // as plain text instead of breaking markup.

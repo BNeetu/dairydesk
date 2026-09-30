@@ -51,7 +51,7 @@ function renderDashCharts(){
   var labels = [], revData = [];
   for(var i = 13; i >= 0; i--){
     var d = new Date(); d.setDate(d.getDate() - i);
-    var ds = d.toISOString().split('T')[0];
+    var ds = localISO(d);
     labels.push(d.toLocaleDateString('en-IN', {day:'numeric', month:'short'}));
     revData.push(sumAmount(deliveriesOn(ds)));
   }
@@ -89,5 +89,3 @@ function renderDashCharts(){
     }
   });
 }
-
-
