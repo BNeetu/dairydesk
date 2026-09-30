@@ -68,7 +68,7 @@ function goPage(page){
   if(page === 'dashboard')  renderDashboard();
   if(page === 'customers')  { custPage = 1; renderCustomersTable(); }
   if(page === 'deliveries') { delPage = 1; initDeliveryFilters(); renderDeliveriesTable(); }
-  if(page === 'billing')    { initBillMonths(); renderBillingPage(); }
+  if(page === 'billing')    { initBillMonths(); syncBillingToDeliveryRange(); }
   if(page === 'reports')    { document.getElementById('reportDate').value = latestDataDate(); renderReportContent(); }
 
   if(page === 'settings')   renderSettings();
@@ -86,6 +86,7 @@ function initApp(){
     // populate dropdowns and tables after remote data load
     populateCustomerDropdown();
     renderDashboard();
+    reportDataHealth();
     if(document.getElementById('page-customers').classList.contains('active')) renderCustomersTable();
   }).catch(function(err){
     applyTheme();
@@ -116,7 +117,7 @@ var modalStack = []; // tracks open modals in order, so nested modals (e.g. Cust
 
 function openModal(id){
   document.getElementById(id).classList.add('open');
-  modalStack.push(id);
+  if(modalStack.indexOf(id) === -1) modalStack.push(id);
   applyModalInertness();
 }
 function closeModal(id){
@@ -170,7 +171,7 @@ function deliveriesInMonth(monthStr){
   return deliveries.filter(function(d){ return d.date.startsWith(monthStr); });
 }
 
-function sumAmount(list){ return list.reduce(function(s,d){ return s + d.amount; }, 0); }
+// sumAmount() lives in totals.js (single source of truth)
 function sumQty(list, product){
   return list.filter(function(d){ return d.product === product; })
              .reduce(function(s,d){ return s + d.qty; }, 0);
@@ -213,7 +214,7 @@ function renderDashboard(){
     {icon:'🌙', v: eveningCount, l: 'Evening Deliveries Today', cls:'purple'},
     {icon:'🥛', v: milkToday.toFixed(1)+'L', l: 'Milk Today', cls:'blue'},
     {icon:'💰', v: money(todayRev), l: "Today's Revenue", cls:'green'},
-    {icon:'📈', v: money(monthRev), l: 'Monthly Revenue', cls:'green'},
+    {icon:'📈', v: money(sumAmount(periodDeliveries())), l: 'Total Revenue ' + periodLabel(), cls:'green'},
   ];
   document.getElementById('dashStats').innerHTML = stats.map(function(s){
     return '<div class="stat-card ' + s.cls + '"><div class="stat-icon">' + s.icon + '</div>' +
@@ -240,3 +241,18 @@ function renderActivityFeed(){
 document.addEventListener('DOMContentLoaded', function(){
   if(typeof populateCustomerDropdown === 'function') populateCustomerDropdown();
 });
+
+// ══════════════════════════════════════════════════════
+//  REFRESH EVERY VISIBLE VIEW (call after ANY delivery add / edit / delete)
+// ══════════════════════════════════════════════════════
+var currentBillCust = null, currentViewCust = null;
+function refreshAllViews(){
+  function on(p){ return document.getElementById('page-' + p).classList.contains('active'); }
+  if(on('dashboard'))  renderDashboard();
+  if(on('customers'))  renderCustomersTable();
+  if(on('deliveries')) renderDeliveriesTable();
+  if(on('billing'))    renderBillingPage();
+  if(on('reports'))    renderReportContent();
+  if(document.getElementById('billModal').classList.contains('open') && currentBillCust && custById(currentBillCust)) openBillModal(currentBillCust);
+  if(document.getElementById('viewCustModal').classList.contains('open') && currentViewCust && custById(currentViewCust)) viewCustomer(currentViewCust);
+}

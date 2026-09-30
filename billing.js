@@ -31,6 +31,15 @@ function initBillMonths(){
   renderBillingPage();
 }
 
+// Billing opens on the same date range as the Deliveries page, so totals match.
+// (Pick a month from the dropdown for a month-only invoice.)
+function syncBillingToDeliveryRange(){
+  var r = periodRange();
+  document.getElementById('billFrom').value = r.from;
+  document.getElementById('billTo').value = r.to;
+  renderBillingPage();
+}
+
 function getBillingRange(){
   var from = document.getElementById('billFrom').value;
   var to = document.getElementById('billTo').value;
@@ -63,9 +72,7 @@ function ensureHtml2Canvas(){
 function buildCustomerBill(custId){
   var c = custById(custId);
   var range = getBillingRange();
-  var dels = deliveries.filter(function(d){
-    return d.custId === custId && d.date >= range.from && d.date <= range.to;
-  });
+  var dels = deliveriesFor(custId, range.from, range.to);
   var prodMap = {};
   var grandTotal = 0;
   dels.forEach(function(d){
@@ -78,6 +85,7 @@ function buildCustomerBill(custId){
   });
   Object.keys(prodMap).forEach(function(p){
     var entry = prodMap[p];
+    entry.amount = round2(entry.amount);
     var rateKeys = Object.keys(entry.rates).map(function(r){ return parseFloat(r); }).sort(function(a,b){ return a-b; });
     if(rateKeys.length === 1){
       entry.rateLabel = '₹' + rateKeys[0] + '/' + (PRODUCTS[p] ? PRODUCTS[p].unit : 'unit');
@@ -87,7 +95,7 @@ function buildCustomerBill(custId){
       entry.rateLabel = '₹' + (PRODUCTS[p] ? PRODUCTS[p].price : 0) + '/' + (PRODUCTS[p] ? PRODUCTS[p].unit : 'unit');
     }
   });
-  return { customer:c, range: range, deliveries:dels, products:prodMap, grandTotal: Math.round(grandTotal*100)/100 };
+  return { customer:c, range: range, deliveries:dels, products:prodMap, grandTotal: sumAmount(dels) };
 }
 
 function renderBillingPage(){
@@ -95,7 +103,7 @@ function renderBillingPage(){
   if(!month) return;
 
   var range = getBillingRange();
-  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id); })
+  var bills = customers.map(function(c){ return buildCustomerBill(c.id); })
     .filter(function(b){ return b.deliveries.length > 0; });
 
   var totalRevenue = bills.reduce(function(s,b){ return s + b.grandTotal; }, 0);
@@ -124,6 +132,7 @@ function renderBillingPage(){
       '<div class="bill-rows">' + rows + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
         '<button class="btn btn-ghost btn-sm" style="flex:1" onclick="openBillModal(\'' + b.customer.id + '\')">📄 View Full Bill</button>' +
+        '<button class="btn btn-ghost btn-sm" style="flex:1" title="Add Previous/Missed Deliveries" onclick="openBackdatedModal(\'' + b.customer.id + '\')">➕ Missed Deliveries</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -131,13 +140,14 @@ function renderBillingPage(){
 
 function generateAllBills(){
   var month = document.getElementById('billMonth').value;
-  var bills = activeCustomers().map(function(c){ return buildCustomerBill(c.id, month); }).filter(function(b){ return b.deliveries.length > 0; });
+  var bills = customers.map(function(c){ return buildCustomerBill(c.id, month); }).filter(function(b){ return b.deliveries.length > 0; });
   toast('⚡ Generated ' + bills.length + ' bills for ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0], 'ok');
   logActivity('bill', 'Generated ' + bills.length + ' monthly bills for ' + month);
   renderBillingPage();
 }
 
 function openBillModal(custId){
+  currentBillCust = custId;
   var b = buildCustomerBill(custId);
   var range = b.range.from + ' to ' + b.range.to;
   var rows = Object.keys(b.products).map(function(p){
@@ -149,7 +159,8 @@ function openBillModal(custId){
 
   var deliveryRows = b.deliveries.map(function(d){
     return '<tr><td>' + d.date + '</td><td>' + d.product + '</td><td style="text-align:center">' + d.qty.toFixed(2) + '</td>' +
-      '<td style="text-align:right">' + money(d.amount) + '</td></tr>';
+      '<td style="text-align:right">' + money(d.amount) + '</td>' +
+      '<td style="white-space:nowrap;text-align:right"><button class="btn-icon" title="Edit" onclick="openEditDelivery(\'' + d.id + '\')">✏️</button> <button class="btn-icon" title="Remove" onclick="deleteDelivery(\'' + d.id + '\')">🗑️</button></td></tr>';
   }).join('');
 
   document.getElementById('billModalContent').innerHTML =
@@ -165,9 +176,10 @@ function openBillModal(custId){
       '<tbody>' + rows + '</tbody>' +
     '</table>' +
     '<div class="delivery-total-bar" style="margin-bottom:18px"><span>Grand Total</span><strong>' + money(b.grandTotal) + '</strong></div>' +
-    '<h3 style="margin-bottom:8px">Delivery Details</h3>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><h3>Delivery Details</h3>' +
+      '<button class="btn btn-ghost btn-sm" onclick="openBackdatedModal(\'' + custId + '\')">➕ Add Previous/Missed Deliveries</button></div>' +
     '<table class="data-table" style="margin-bottom:14px">' +
-      '<thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead>' +
+      '<thead><tr><th>Date</th><th>Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th><th></th></tr></thead>' +
       '<tbody>' + deliveryRows + '</tbody>' +
     '</table>' +
     '<div style="display:flex;gap:8px;margin-top:14px">' +

@@ -52,7 +52,8 @@ function sheetRequest(action, payload){
 
 function loadRemoteState(){
   if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
-  return fetch(SHEETS_API_URL + '?action=load')
+  // Wait for any in-flight save first, so a load can never overwrite newer local changes
+  return _savePending.then(function(){ return fetch(SHEETS_API_URL + '?action=load'); })
     .then(function(res){
       if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets load failed'); });
       return res.json();
@@ -86,6 +87,7 @@ function loadRemoteState(){
       if(data.pricing && typeof data.pricing === 'object' && Object.keys(data.pricing).length){
         PRODUCTS = Object.assign({}, DEFAULT_PRODUCTS, data.pricing);
       }
+      deliveries = normalizeDeliveries(deliveries);
       persistLocalOnly();
       return data;
     });
@@ -114,10 +116,14 @@ function loadAppData(){
   });
 }
 
+var _savePending = Promise.resolve(); // saves run one at a time, in order
 function persist(){
   persistLocalOnly();
   if(SHEETS_ENABLED){
-    saveRemoteState().catch(function(err){ console.warn('Google Sheets save failed:', err); });
+    _savePending = _savePending.then(saveRemoteState).catch(function(err){
+      console.warn('Google Sheets save failed:', err);
+      toast('Could not sync to Google Sheets — changes are saved on this device only', 'err');
+    });
   }
 }
 

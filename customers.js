@@ -204,7 +204,8 @@ function renderCustomersTable(){
 function viewCustomer(id){
   var c = custById(id);
   if(!c) return;
-  var custDels = deliveries.filter(function(d){ return d.custId === id; });
+  currentViewCust = id;
+  var custDels = deliveriesFor(id);
   var totalDeliveries = custDels.length;
   var totalAmount = sumAmount(custDels);
 
@@ -216,7 +217,7 @@ function viewCustomer(id){
   });
 
   var rows = Object.keys(prodBreak).map(function(p){
-    var info = PRODUCTS[p];
+    var info = PRODUCTS[p] || { icon:"", unit:"", price:0 };
     return '<div class="bill-row"><span>' + info.icon + ' ' + p + ' (' + prodBreak[p].qty.toFixed(2) + ' ' + info.unit + ')</span><strong>' + money(prodBreak[p].amount) + '</strong></div>';
   }).join('') || '<div class="bill-row"><span style="color:var(--gray)">No deliveries yet</span></div>';
 
@@ -231,9 +232,10 @@ function viewCustomer(id){
       '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Deliveries</div><div style="font-weight:800;margin-top:3px">' + totalDeliveries + '</div></div>' +
       '<div style="background:var(--lgray);border-radius:9px;padding:10px;text-align:center"><div style="font-size:.7rem;color:var(--gray);font-weight:700;text-transform:uppercase">Total Billed (All-Time)</div><div style="font-weight:800;margin-top:3px;color:var(--primary)">' + money(totalAmount) + '</div></div>' +
     '</div>' +
-    '<div style="display:flex;gap:10px;margin-bottom:14px">' +
+    '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
       '<button class="btn btn-primary" onclick="openBillModal(\'' + c.id + '\')">📄 View Billing</button>' +
       '<button class="btn btn-ghost" onclick="closeModal(\'viewCustModal\');goPage(\'billing\')">Go to Billing Page</button>' +
+      '<button class="btn btn-ghost" onclick="openBackdatedModal(\'' + c.id + '\')">➕ Add Missed Deliveries</button>' +
     '</div>' +
     (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + escapeHtml(c.notes) + '</div>' : '') +
     '<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Product Summary (All-Time)</div>' +

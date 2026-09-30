@@ -23,6 +23,7 @@ function renderReportContent(){
   var dateVal = toIsoDate(document.getElementById('reportDate').value || todayStr());
   var el = document.getElementById('reportContent');
 
+  if(type === 'period')  el.innerHTML = buildPeriodReport();
   if(type === 'daily')   el.innerHTML = buildDailyReport(dateVal);
   if(type === 'weekly')  el.innerHTML = buildWeeklyReport(dateVal);
   if(type === 'monthly') el.innerHTML = buildMonthlyReport(dateVal);
@@ -33,9 +34,25 @@ function renderReportContent(){
 
 function reportTableRows(list){
   return list.map(function(d){
-    var info = PRODUCTS[d.product];
+    var info = PRODUCTS[d.product] || { icon:"", unit:"", price:0 };
     return '<tr><td>' + fmtDate(d.date) + '</td><td>' + escapeHtml(d.custName) + '</td><td>' + d.slot + '</td><td>' + info.icon + ' ' + d.product + '</td><td>' + d.qty + ' ' + info.unit + '</td><td style="font-weight:700">' + money(d.amount) + '</td></tr>';
   }).join('') || '<tr><td colspan="6"><div class="empty"><span class="icon">📭</span><p>No records</p></div></td></tr>';
+}
+
+function buildPeriodReport(){
+  var r = periodRange(), list = periodDeliveries();
+  var custRows = customers.map(function(c){ return customerSummary(c.id, r.from, r.to); }).map(function(s, i){ return { c: customers[i], s: s }; })
+    .filter(function(x){ return x.s.count > 0; })
+    .map(function(x){ return '<tr><td>' + escapeHtml(x.c.name) + '</td><td>' + x.s.count + '</td><td style="font-weight:700">' + money(x.s.amount) + '</td></tr>'; }).join('');
+  var prodRows = Object.keys(PRODUCTS).map(function(p){
+    var l = list.filter(function(d){ return d.product === p; });
+    return l.length ? '<tr><td>' + PRODUCTS[p].icon + ' ' + p + '</td><td>' + sumQty(list, p).toFixed(2) + ' ' + PRODUCTS[p].unit + '</td><td style="font-weight:700">' + money(sumAmount(l)) + '</td></tr>' : '';
+  }).join('');
+  return '<h3 style="margin-bottom:10px">Deliveries Range Summary — ' + fmtDateLong(r.from) + ' to ' + fmtDateLong(r.to) + '</h3>' +
+    '<div class="stats-row-sm"><div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Records</div></div>' +
+    '<div class="stat-card green"><div class="stat-v">' + money(sumAmount(list)) + '</div><div class="stat-l">Total Amount</div></div></div>' +
+    '<h4 style="margin:12px 0 6px;font-size:.86rem">By Customer</h4><table class="data-table"><thead><tr><th>Customer</th><th>Records</th><th>Amount</th></tr></thead><tbody>' + (custRows || '<tr><td colspan="3">No data</td></tr>') + '</tbody></table>' +
+    '<h4 style="margin:14px 0 6px;font-size:.86rem">By Product</h4><table class="data-table"><thead><tr><th>Product</th><th>Total Qty</th><th>Amount</th></tr></thead><tbody>' + (prodRows || '<tr><td colspan="3">No data</td></tr>') + '</tbody></table>';
 }
 
 function buildDailyReport(date){
@@ -46,15 +63,17 @@ function buildDailyReport(date){
     '<table class="data-table"><thead><tr><th>Date</th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Amount</th></tr></thead><tbody>' + reportTableRows(list) + '</tbody></table>';
 }
 
+// One definition of "the week" shared by the on-screen report and the exports.
+// (The old code built local-time Dates and called toISOString(), which shifts the
+// window back a day in timezones ahead of UTC, e.g. India.)
+function weeklyRange(date){
+  var latest = toIsoDate(latestDataDate()), earliest = toIsoDate(earliestDataDate());
+  if(date > latest) return { from: earliest, to: latest };   // clamp to the data we have
+  return { from: addDaysISO(date, -6), to: date };
+}
+
 function buildWeeklyReport(date){
-  var end = new Date(date + 'T00:00:00');
-  var start = new Date(date + 'T00:00:00'); start.setDate(start.getDate()-6);
-  var dataLatest = toIsoDate(latestDataDate());
-  var dataEarliest = toIsoDate(earliestDataDate());
-  // If the requested date is beyond the data we have, clamp the window to the
-  // actual data range so the report isn't just empty.
-  if(date > dataLatest){ end = new Date(dataLatest + 'T00:00:00'); start = new Date(dataEarliest + 'T00:00:00'); }
-  var sStr = start.toISOString().split('T')[0], eStr = end.toISOString().split('T')[0];
+  var w = weeklyRange(date), sStr = w.from, eStr = w.to;
   var list = deliveriesInRange(sStr, eStr);
   return '<h3 style="margin-bottom:10px">Weekly Report — ' + fmtDateLong(sStr) + ' to ' + fmtDateLong(eStr) + '</h3>' +
     '<div class="stats-row-sm"><div class="stat-card"><div class="stat-v">' + list.length + '</div><div class="stat-l">Deliveries</div></div>' +
@@ -72,7 +91,7 @@ function buildMonthlyReport(date){
     prodMap[d.product].qty += d.qty; prodMap[d.product].amount += d.amount;
   });
   var prodRows = Object.keys(prodMap).map(function(p){
-    var info = PRODUCTS[p];
+    var info = PRODUCTS[p] || { icon:"", unit:"", price:0 };
     return '<tr><td>' + info.icon + ' ' + p + '</td><td>' + prodMap[p].qty.toFixed(2) + ' ' + info.unit + '</td><td style="font-weight:700">' + money(prodMap[p].amount) + '</td></tr>';
   }).join('');
   return '<h3 style="margin-bottom:10px">Monthly Report — ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0] + '</h3>' +
@@ -87,7 +106,7 @@ function buildRevenueReport(date){
   var month = useDate.slice(0,7);
   var todayRev = sumAmount(deliveriesOn(useDate));
   var monthRev = sumAmount(deliveriesInMonth(month));
-  var yearRev = deliveries.filter(function(d){ return d.date.slice(0,4) === useDate.slice(0,4); }).reduce(function(s,d){return s+d.amount;},0);
+  var yearRev = sumAmount(deliveries.filter(function(d){ return d.date.slice(0,4) === useDate.slice(0,4); }));
   var allTimeRev = sumAmount(deliveries);
   return '<h3 style="margin-bottom:10px">Revenue Report</h3>' +
     '<div class="stats-row-sm">' +
@@ -101,7 +120,7 @@ function buildRevenueReport(date){
 function buildProductReport(){
   var rows = Object.keys(PRODUCTS).map(function(p){
     var list = deliveries.filter(function(d){ return d.product === p; });
-    var info = PRODUCTS[p];
+    var info = PRODUCTS[p] || { icon:"", unit:"", price:0 };
     var qty = sumQty(deliveries, p);
     var amt = sumAmount(list);
     return '<tr><td>' + info.icon + ' ' + p + '</td><td>' + qty.toFixed(2) + ' ' + info.unit + '</td><td>₹' + info.price + '/' + info.unit + '</td><td style="font-weight:700">' + money(amt) + '</td></tr>';
@@ -135,12 +154,13 @@ function exportReportExcel(){
   var data = [];
 
   if(type === 'daily') data = deliveriesOn(date);
-  else if(type === 'weekly'){ var end=new Date(date), start=new Date(date); start.setDate(start.getDate()-6); data = deliveriesInRange(start.toISOString().split('T')[0], end.toISOString().split('T')[0]); }
+  else if(type === 'weekly'){ var w = weeklyRange(date); data = deliveriesInRange(w.from, w.to); }
   else if(type === 'monthly') data = deliveriesInMonth(date.slice(0,7));
+  else if(type === 'period') data = periodDeliveries();
   else data = deliveries;
 
   var rows = data.map(function(d){
-    return { Date: fmtDate(d.date), Customer: d.custName, Slot: d.slot, Product: d.product, Qty: d.qty, Unit: PRODUCTS[d.product].unit, Amount: d.amount };
+    return { Date: fmtDate(d.date), Customer: d.custName, Slot: d.slot, Product: d.product, Qty: d.qty, Unit: (PRODUCTS[d.product] || {}).unit || "", Amount: d.amount };
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{Note:'No data'}]), 'Report');
   XLSX.writeFile(wb, 'DairyDesk_' + type + '_report.xlsx');

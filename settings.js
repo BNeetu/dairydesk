@@ -15,6 +15,7 @@ function renderSettings(){
   '<p style="font-size:.74rem;color:var(--gray);margin-top:10px">Note: Curd is priced per 500g unit, Milk &amp; Buttermilk per litre, Ghee per kg.</p>';
 
   document.getElementById('settingsTheme').value = currentTheme;
+  renderDataCheck();
 }
 
 function updatePrice(product, val){
