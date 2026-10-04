@@ -9,7 +9,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -436,19 +436,45 @@
 
 <div id="toastWrap" class="toast-wrap"></div>
 
-<script src="data.js" charset="utf-8"></script>
-<script src="totals.js" charset="utf-8"></script>
-<script src="charts.js" charset="utf-8"></script>
-<script src="customers.js" charset="utf-8"></script>
-<script src="deliveries.js" charset="utf-8"></script>
-<script src="invoice-assets.js" charset="utf-8"></script>
-<script src="invoice.js" charset="utf-8"></script>
-<script src="billing.js" charset="utf-8"></script>
-<script src="reports.js" charset="utf-8"></script>
-<script src="settings.js" charset="utf-8"></script>
-<script src="alerts.js" charset="utf-8"></script>
-<script src="extras.js" charset="utf-8"></script>
-<script src="app.js" charset="utf-8"></script>
+<script src="data.js?v=3" charset="utf-8"></script>
+<script src="totals.js?v=3" charset="utf-8"></script>
+<script src="charts.js?v=3" charset="utf-8"></script>
+<script src="customers.js?v=3" charset="utf-8"></script>
+<script src="deliveries.js?v=3" charset="utf-8"></script>
+<script src="invoice-assets.js?v=3" charset="utf-8"></script>
+<script src="invoice.js?v=3" charset="utf-8"></script>
+<script src="billing.js?v=3" charset="utf-8"></script>
+<script src="reports.js?v=3" charset="utf-8"></script>
+<script src="settings.js?v=3" charset="utf-8"></script>
+<script src="alerts.js?v=3" charset="utf-8"></script>
+<script src="extras.js?v=3" charset="utf-8"></script>
+<script>if(typeof openRouteList!=='function'){document.write('<script src="extra.js?v=3" charset="utf-8"><\/script>');}</script><!-- fallback only if extras.js is missing -->
+<script src="app.js?v=3" charset="utf-8"></script>
 <!-- Customer dropdowns are populated after remote data loads in initApp() -->
+<script>
+// Startup self-check: shows exactly which file/function is missing, and surfaces any click error on screen.
+window.addEventListener('error', function(e){
+  if(e && e.message && typeof toast === 'function') toast('\u26A0\uFE0F ' + e.message, 'err');
+});
+window.addEventListener('load', function(){
+  var need = {
+    'extras.js': ['openRouteList','openPayModal','openExpModal','renderPaymentsPage','renderLowDelivery','savePayment','saveExpense'],
+    'alerts.js': ['skipPending','renderPendingAlerts','sendPendingWhatsApp'],
+    'deliveries.js': ['openDeliveryModal','openBackdatedModal'],
+    'billing.js': ['openBillModal','openWhatsAppChat'],
+    'data.js': ['lsGet','persistLocalOnly'],
+    'features.js': ['openStatement','openReminders','openDayClose']
+  }, bad = [];
+  Object.keys(need).forEach(function(f){
+    var miss = need[f].filter(function(fn){ return typeof window[fn] !== 'function'; });
+    if(miss.length) bad.push(f + ' (' + miss.join(', ') + ')');
+  });
+  if(!bad.length) return;
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#B91C1C;color:#fff;padding:10px 14px;font:700 13px sans-serif';
+  d.textContent = '\u26A0\uFE0F Ye file load nahi hui ya galat hai: ' + bad.join(' | ') + ' \u2014 file ka naam/jagah check karein (index.html wale folder me, exact naam).';
+  document.body.appendChild(d);
+});
+</script>
 </body>
 </html>

@@ -371,7 +371,7 @@ function bdEdit(i, field, v){
     if(row) row.classList.toggle('bd-off', !r.include);
   } else if(field === 'product'){
     r.product = v;
-    r.rate = PRODUCTS[v] ? PRODUCTS[v].price : 0;
+    r.rate = PRODUCTS[v] ? rateFor(document.getElementById('bd-customer').value, v) : 0;
     var rateEl = row && row.querySelector('.bd-rate');
     if(rateEl) rateEl.value = r.rate;
   } else {
@@ -387,7 +387,7 @@ function bdAddLine(i){
   var r = bdRows[i];
   var usedHere = bdRows.filter(function(x){ return x.date === r.date && x.slot === r.slot; }).map(function(x){ return x.product; });
   var product = Object.keys(PRODUCTS).find(function(p){ return usedHere.indexOf(p) === -1; }) || r.product;
-  bdRows.splice(i + 1, 0, { date: r.date, slot: r.slot, product: product, qty: 1, rate: PRODUCTS[product].price, include: true, locked: '', extra: true });
+  bdRows.splice(i + 1, 0, { date: r.date, slot: r.slot, product: product, qty: 1, rate: rateFor(document.getElementById('bd-customer').value, product), include: true, locked: '', extra: true });
   bdRender();
 }
 function bdRemoveLine(i){ bdRows.splice(i, 1); bdRender(); }
@@ -475,7 +475,8 @@ function openEditDelivery(id){
   openModal('editDelModal');
 }
 function onEditProductChange(sel){
-  if(PRODUCTS[sel.value]) document.getElementById('ed-rate').value = PRODUCTS[sel.value].price;
+  var cur = deliveries.find(function(x){ return x.id === editingDelId; });
+  if(PRODUCTS[sel.value]) document.getElementById('ed-rate').value = rateFor(cur ? cur.custId : '', sel.value);
   updateEditAmount();
 }
 function updateEditAmount(){

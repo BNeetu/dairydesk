@@ -15,6 +15,10 @@ function chartColors(){
 function makeChart(canvasId, config){
   var ctx = document.getElementById(canvasId);
   if(!ctx) return;
+  if(typeof Chart === 'undefined'){   // Chart.js CDN not reachable (offline / blocked) - skip charts, don't break the app
+    if(!window._chartWarned){ window._chartWarned = true; toast('Charts could not load (internet needed for Chart.js). Rest of the app works.', 'warn'); }
+    return;
+  }
   if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
   chartInstances[canvasId] = new Chart(ctx, config);
 }

@@ -69,8 +69,8 @@ function buildDailyReport(date){
 // window back a day in timezones ahead of UTC, e.g. India.)
 function weeklyRange(date){
   var latest = toIsoDate(latestDataDate()), earliest = toIsoDate(earliestDataDate());
-  if(date > latest) return { from: earliest, to: latest };   // clamp to the data we have
-  return { from: addDaysISO(date, -6), to: date };
+  var to = date > latest ? latest : date;                      // never go past the data we have
+  return { from: addDaysISO(to, -6), to: to };
 }
 
 function buildWeeklyReport(date){

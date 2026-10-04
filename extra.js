@@ -61,7 +61,7 @@ function renderPaymentsPage(){
   if(!mEl.value) mEl.value = todayStr().slice(0, 7);
   var month = mEl.value, rows = payRows();
   var billed = round2(rows.reduce(function(s, r){ return s + r.billed; }, 0));
-  var paid = round2(rows.reduce(function(s, r){ return s + r.paid; }, 0));
+  var paid = round2(EX.payments.reduce(function(s, p){ return s + (+p.amount || 0); }, 0));   // all money received, even from customers deleted later
   var owed = round2(rows.reduce(function(s, r){ return s + Math.max(r.bal, 0); }, 0));
   var mDels = deliveriesInMonth(month), mRev = sumAmount(mDels);
   var mExp = EX.expenses.filter(function(e){ return e.date.slice(0, 7) === month; });

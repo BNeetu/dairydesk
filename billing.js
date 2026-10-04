@@ -121,7 +121,8 @@ function renderBillingPage(){
 function generateAllBills(){
   var month = document.getElementById('billMonth').value;
   var bills = customers.map(function(c){ return buildCustomerBill(c.id, month); }).filter(function(b){ return b.deliveries.length > 0; });
-  toast('⚡ Generated ' + bills.length + ' bills for ' + MONTHS[parseInt(month.split('-')[1])-1] + ' ' + month.split('-')[0], 'ok');
+  var rg = getBillingRange();
+  toast('⚡ Generated ' + bills.length + ' bills for ' + fmtDate(rg.from) + ' – ' + fmtDate(rg.to), 'ok');
   logActivity('bill', 'Generated ' + bills.length + ' monthly bills for ' + month);
   renderBillingPage();
 }

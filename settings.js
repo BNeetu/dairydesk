@@ -67,8 +67,8 @@ function exportFullBackup(){
           row[colName] = '';
         }
       });
-      row['Monthly Total Qty'] = custMap[cName].totalQty;
-      row['Monthly Total Amt'] = custMap[cName].totalAmt;
+      row['Total Qty (mixed units)'] = custMap[cName].totalQty;
+      row['Total Amt (all-time)'] = round2(custMap[cName].totalAmt);
       return row;
     });
   }
