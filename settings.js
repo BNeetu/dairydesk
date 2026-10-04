@@ -16,6 +16,8 @@ function renderSettings(){
 
   document.getElementById('settingsTheme').value = currentTheme;
   renderDataCheck();
+  renderAlertSettings();
+  renderExtrasSettings();
 }
 
 function updatePrice(product, val){

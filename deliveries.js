@@ -34,7 +34,7 @@ function addDeliveryProductRow(){
     return '<option value="' + p + '">' + PRODUCTS[p].icon + ' ' + p + ' (₹' + PRODUCTS[p].price + '/' + PRODUCTS[p].unit + ')</option>';
   }).join('');
   var firstProduct = Object.keys(PRODUCTS)[0];
-  var firstPrice = firstProduct ? PRODUCTS[firstProduct].price : 0;
+  var firstPrice = firstProduct ? rateFor(document.getElementById('d-customer').value, firstProduct) : 0;
   div.innerHTML =
     '<select class="prow-product" onchange="onDeliveryProductChange(this)">' + prodOptions + '</select>' +
     '<input type="number" class="prow-qty" value="1" step="0.5" min="0.5" oninput="updateDeliveryTotal()" placeholder="Qty">' +
@@ -51,7 +51,7 @@ function onDeliveryProductChange(select){
   if(!row) return;
   var rateInput = row.querySelector('.prow-rate');
   if(rateInput && PRODUCTS[product]){
-    rateInput.value = PRODUCTS[product].price;
+    rateInput.value = rateFor(document.getElementById('d-customer').value, product);
   }
   updateDeliveryTotal();
 }

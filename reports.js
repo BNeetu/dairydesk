@@ -11,9 +11,9 @@ function toIsoDate(d){
     if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     if(/^\d{4}-\d{2}$/.test(s)) return s + '-01';
     var dt = new Date(s);
-    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    if(!isNaN(dt.getTime())) return localISO(dt);
     dt = new Date(s + 'T00:00:00');
-    if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+    if(!isNaN(dt.getTime())) return localISO(dt);
     return todayStr();
   }catch(e){ return todayStr(); }
 }
@@ -24,6 +24,7 @@ function renderReportContent(){
   var el = document.getElementById('reportContent');
 
   if(type === 'period')  el.innerHTML = buildPeriodReport();
+  if(type === 'top')     el.innerHTML = buildTopReport();
   if(type === 'daily')   el.innerHTML = buildDailyReport(dateVal);
   if(type === 'weekly')  el.innerHTML = buildWeeklyReport(dateVal);
   if(type === 'monthly') el.innerHTML = buildMonthlyReport(dateVal);
@@ -171,14 +172,14 @@ function exportReportPDF(){
   var doc = new jspdf.jsPDF();
   var type = document.getElementById('reportType').value;
   doc.setFontSize(16); doc.setTextColor(79,70,229);
-  doc.text('DairyDesk - ' + type.charAt(0).toUpperCase()+type.slice(1) + ' Report', 14, 18);
+  doc.text('Bhati Farms - ' + type.charAt(0).toUpperCase()+type.slice(1) + ' Report', 14, 18);
   doc.setFontSize(10); doc.setTextColor(80,80,80);
   doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 26);
 
   var contentEl = document.getElementById('reportContent');
   var content = (contentEl.innerText || contentEl.textContent || '').split('\n').filter(Boolean);
   var y = 38;
-  content.slice(0, 45).forEach(function(line){
+  content.forEach(function(line){
     doc.text(line.slice(0,100), 14, y);
     y += 6;
     if(y > 280){ doc.addPage(); y = 18; }

@@ -41,6 +41,7 @@
     <button class="hamburger" onclick="toggleSidebar()">☰</button>
     <div class="tb-logo"><img src="logo.png" alt="Bhati Farms Ledger logo"><span>Bhati Farms Ledger</span></div>
     <div class="tb-right">
+      <span id="pendingChip" onclick="goPage('dashboard')" style="display:none;cursor:pointer;font-size:.75rem;background:#F59E0B;color:#3E342D;padding:3px 9px;border-radius:12px;font-weight:800"></span>
       <span id="syncStatus" onclick="persist()" style="cursor:pointer;font-size:.75rem"></span>
       <button class="theme-toggle" onclick="toggleDarkMode()" id="themeBtn">🌙</button>
       <span id="navUser">👤 Admin</span>
@@ -56,6 +57,7 @@
         <button class="side-link" data-page="customers" onclick="goPage('customers')">👥 <span>Customers</span></button>
         <button class="side-link" data-page="deliveries" onclick="goPage('deliveries')">🛵 <span>Deliveries</span></button>
         <button class="side-link" data-page="billing" onclick="goPage('billing')">💰 <span>Billing</span></button>
+        <button class="side-link" data-page="payments" onclick="goPage('payments')">💳 <span>Payments</span></button>
         <button class="side-link" data-page="reports" onclick="goPage('reports')">📈 <span>Reports</span></button>
 
         <button class="side-link" data-page="settings" onclick="goPage('settings')">⚙️ <span>Settings</span></button>
@@ -77,6 +79,12 @@
         <div class="pg-head">
           <div><h1 class="pg-title">Dashboard</h1><p class="pg-sub" id="dashDateLabel"></p></div>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-primary" onclick="openTodayModal()">⚡ Mark Today's Deliveries</button>
+          <button class="btn btn-ghost" onclick="openRouteList()">📋 Route List</button>
+        </div>
+        <div id="pendingAlert"></div>
+        <div id="lowDelAlert"></div>
         <div class="stats-grid" id="dashStats"></div>
         <div class="dash-charts-row">
           <div class="card chart-card">
@@ -174,6 +182,27 @@
       </section>
 
       <!-- ═══ REPORTS ═══ -->
+      <section id="page-payments" class="page">
+        <div class="pg-head">
+          <div><h1 class="pg-title">Payments</h1><p class="pg-sub">Collections, outstanding balance, expenses &amp; profit</p></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="openExpModal()">➖ Add Expense</button>
+            <button class="btn btn-primary" onclick="openPayModal()">💰 Record Payment</button>
+          </div>
+        </div>
+        <div class="filter-bar"><label style="display:flex;gap:6px;align-items:center">Month <input type="month" id="payMonth" onchange="renderPaymentsPage()"></label></div>
+        <div id="payNotice"></div>
+        <div class="stats-grid" id="payStats"></div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><h3>Outstanding by customer (all-time)</h3></div>
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Customer</th><th>Billed</th><th>Paid</th><th>Baaki</th><th>Status</th><th>Actions</th></tr></thead><tbody id="payBody"></tbody></table></div>
+        </div>
+        <div class="settings-grid">
+          <div class="card"><div class="card-head"><h3>Recent payments</h3></div><div class="card-body" id="payRecent"></div></div>
+          <div class="card"><div class="card-head"><h3>Expenses (selected month)</h3></div><div class="card-body" id="expRecent"></div></div>
+        </div>
+      </section>
+
       <section id="page-reports" class="page">
         <div class="pg-head">
           <div><h1 class="pg-title">Reports</h1><p class="pg-sub">Business reports with export options</p></div>
@@ -185,6 +214,7 @@
         <div class="filter-bar">
           <select id="reportType" onchange="renderReportContent()">
             <option value="period">Deliveries Range Summary</option>
+            <option value="top">Top Customers</option>
             <option value="daily">Daily Delivery Report</option>
             <option value="weekly">Weekly Report</option>
             <option value="monthly">Monthly Report</option>
@@ -210,6 +240,14 @@
           <div class="card">
             <div class="card-head"><h3>🩺 Data Check</h3></div>
             <div class="card-body" id="dataCheck"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>📲 Delivery Alerts</h3></div>
+            <div class="card-body" id="alertSettings"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🧰 Extras &amp; Backup</h3></div>
+            <div class="card-body" id="extrasSettings"></div>
           </div>
           <div class="card">
             <div class="card-head"><h3>🎨 Appearance</h3></div>
@@ -273,7 +311,7 @@
       <div class="fg"><label>Slot *</label><select id="d-slot"><option>Morning</option><option>Evening</option></select></div>
     </div>
     <div class="fg"><label>Customer *</label>
-      <select id="d-customer"></select>
+      <select id="d-customer" onchange="onDeliveryCustomerChange()"></select>
     </div>
     <div class="prod-row prod-row-header">
       <div>Product</div>
@@ -347,6 +385,55 @@
   </div>
 </div>
 
+<!-- PAYMENT -->
+<div class="modal-bg" id="payModal"><div class="modal">
+  <button class="modal-close" onclick="closeModal('payModal')">✕</button>
+  <h2>Record Payment</h2>
+  <div class="fg"><label>Customer</label><select id="pay-cust" onchange="payFillAmount()"></select></div>
+  <div class="frow"><div class="fg"><label>Amount (₹) *</label><input type="number" id="pay-amt" min="0" step="1"></div><div class="fg"><label>Date *</label><input type="date" id="pay-date"></div></div>
+  <div class="frow"><div class="fg"><label>Mode</label><select id="pay-mode"><option>Cash</option><option>UPI</option><option>Bank</option></select></div><div class="fg"><label>Note</label><input id="pay-note"></div></div>
+  <button class="btn btn-primary btn-lg" style="width:100%" onclick="savePayment()">✅ Save Payment</button>
+</div></div>
+
+<!-- EXPENSE -->
+<div class="modal-bg" id="expModal"><div class="modal">
+  <button class="modal-close" onclick="closeModal('expModal')">✕</button>
+  <h2>Add Expense</h2>
+  <div class="frow"><div class="fg"><label>Date *</label><input type="date" id="exp-date"></div><div class="fg"><label>Category</label><select id="exp-cat"><option>Doodh khareed</option><option>Chara</option><option>Salary</option><option>Petrol</option><option>Other</option></select></div></div>
+  <div class="frow"><div class="fg"><label>Amount (₹) *</label><input type="number" id="exp-amt" min="0"></div><div class="fg"><label>Litres (for milk purchase)</label><input type="number" id="exp-litres" min="0" step="0.5"></div></div>
+  <div class="fg"><label>Note</label><input id="exp-note"></div>
+  <button class="btn btn-primary btn-lg" style="width:100%" onclick="saveExpense()">✅ Save Expense</button>
+</div></div>
+
+<!-- PAUSE / RATES -->
+<div class="modal-bg" id="extraModal"><div class="modal">
+  <button class="modal-close" onclick="closeModal('extraModal')">✕</button>
+  <div id="extraContent"></div>
+</div></div>
+
+<!-- MARK TODAY'S DELIVERIES -->
+<div class="modal-bg" id="todayModal"><div class="modal modal-wide">
+  <button class="modal-close" onclick="closeModal('todayModal')">✕</button>
+  <h2>⚡ Mark Deliveries</h2>
+  <div class="fg" style="max-width:220px"><label>Date</label><input type="date" id="tm-date" onchange="tmBuild()"></div>
+  <div id="tm-msg" class="bd-msg"></div>
+  <div class="table-wrap bd-table"><table class="data-table"><thead><tr><th><input type="checkbox" checked onchange="tmToggleAll(this.checked)"></th><th>Customer</th><th>Slot</th><th>Product</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody id="tm-body"></tbody></table></div>
+  <div style="font-size:.8rem;color:var(--gray);margin-top:8px">Only customers due on this date (not paused, not already recorded) are listed. Quantity and rate come from their last delivery / special rate — edit if different, untick if not delivered.</div>
+  <div class="delivery-total-bar"><span>Total</span><strong id="tm-total">₹0</strong></div>
+  <button id="tm-save" class="btn btn-primary btn-lg" style="width:100%;margin-top:10px" onclick="tmSave()">✅ Save deliveries</button>
+</div></div>
+
+<!-- ROUTE LIST -->
+<div class="modal-bg" id="routeModal"><div class="modal">
+  <button class="modal-close" onclick="closeModal('routeModal')">✕</button>
+  <h2>📋 Today's Route List</h2>
+  <pre id="routeText" style="white-space:pre-wrap;font-family:inherit;font-size:.86rem;background:var(--lgray);border-radius:9px;padding:12px;max-height:50vh;overflow:auto"></pre>
+  <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+    <button class="btn" style="background:var(--wa);color:#fff;flex:1" onclick="sendRouteWhatsApp()">📲 WhatsApp Delivery Boy</button>
+    <button class="btn btn-ghost" style="flex:1" onclick="copyRoute()">📋 Copy</button>
+  </div>
+</div></div>
+
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script src="data.js" charset="utf-8"></script>
@@ -359,6 +446,8 @@
 <script src="billing.js" charset="utf-8"></script>
 <script src="reports.js" charset="utf-8"></script>
 <script src="settings.js" charset="utf-8"></script>
+<script src="alerts.js" charset="utf-8"></script>
+<script src="extras.js" charset="utf-8"></script>
 <script src="app.js" charset="utf-8"></script>
 <!-- Customer dropdowns are populated after remote data loads in initApp() -->
 </body>

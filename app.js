@@ -71,6 +71,7 @@ function goPage(page){
   if(page === 'billing')    { initBillMonths(); syncBillingToDeliveryRange(); }
   if(page === 'reports')    { document.getElementById('reportDate').value = latestDataDate(); renderReportContent(); }
 
+  if(page === 'payments')   renderPaymentsPage();
   if(page === 'settings')   renderSettings();
 }
 
@@ -223,6 +224,8 @@ function renderDashboard(){
 
   renderDashCharts();
   renderActivityFeed();
+  renderPendingAlerts();
+  renderLowDelivery();
 }
 
 function renderActivityFeed(){
@@ -233,7 +236,7 @@ function renderActivityFeed(){
     var when = new Date(a.time).toLocaleString('en-IN', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
     return '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start">' +
       '<span style="font-size:1rem">' + icon + '</span>' +
-      '<div style="flex:1"><div style="font-size:.84rem">' + a.msg + '</div>' +
+      '<div style="flex:1"><div style="font-size:.84rem">' + escapeHtml(a.msg) + '</div>' +
       '<div style="font-size:.7rem;color:var(--gray)">' + when + '</div></div></div>';
   }).join('');
 }
@@ -248,10 +251,12 @@ document.addEventListener('DOMContentLoaded', function(){
 var currentBillCust = null, currentViewCust = null;
 function refreshAllViews(){
   function on(p){ return document.getElementById('page-' + p).classList.contains('active'); }
+  renderPendingAlerts();
   if(on('dashboard'))  renderDashboard();
   if(on('customers'))  renderCustomersTable();
   if(on('deliveries')) renderDeliveriesTable();
   if(on('billing'))    renderBillingPage();
+  if(on('payments'))   renderPaymentsPage();
   if(on('reports'))    renderReportContent();
   if(document.getElementById('billModal').classList.contains('open') && currentBillCust && custById(currentBillCust)) openBillModal(currentBillCust);
   if(document.getElementById('viewCustModal').classList.contains('open') && currentViewCust && custById(currentViewCust)) viewCustomer(currentViewCust);

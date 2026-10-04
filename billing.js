@@ -152,6 +152,7 @@ function openBillModal(custId){
       '<button class="btn btn-primary" onclick="downloadBillPDF(\'' + custId + '\')">📄 Download PDF</button>' +
       '<button class="btn btn-blue" onclick="printBill(\'' + custId + '\')">🖨️ Print Bill</button>' +
       '<button class="btn" style="background:var(--wa);color:#fff" onclick="sendBillWhatsApp(\'' + custId + '\')">📱 WhatsApp Bill</button>' +
+      '<button class="btn btn-ghost" title="Attach the PDF itself via the share sheet" onclick="shareBillPDF(\'' + custId + '\')">📎 Share PDF file</button>' +
       '<button class="btn btn-ghost" onclick="closeModal(\'billModal\')">Close</button>' +
     '</div>' +
     '<div class="inv-preview" id="invPreview">' + Invoice.previewHTML(inv.pages) + '</div>' +
@@ -419,5 +420,37 @@ async function sendBillWhatsApp(custId){
       : 'PDF saved. Pop-ups are blocked, so open WhatsApp for ' + pretty + ' and attach ' + inv.filename, opened ? 'ok' : 'warn');
   }finally{
     delete _waBusy[custId];
+  }
+}
+
+// Attaches the REAL PDF file: opens the phone's (or Windows/Chrome's) share sheet with the PDF
+// already attached - choose WhatsApp, then the customer. (A web page cannot pick the contact or
+// press Send for you; only the WhatsApp Business API can do that.)
+async function shareBillPDF(custId){
+  var c = custById(custId);
+  if(!c){ toast('Customer not found', 'err'); return; }
+  var b = buildCustomerBill(custId);
+  if(!b.deliveries.length){ toast('No deliveries in the selected period - nothing to send', 'err'); return; }
+  try{
+    var inv = Invoice.create(b), blob = inv.pdf(), file = null;
+    try{ file = new File([blob], inv.filename, { type:'application/pdf' }); }catch(e){}
+    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+      try{
+        await navigator.share({ files:[file], title:inv.title, text:billCaption(inv) });
+        toast('Choose WhatsApp \u2192 ' + c.name + ' to send the PDF', 'ok');
+        return;
+      }catch(err){
+        if(err && err.name === 'AbortError'){ toast('Sharing cancelled', ''); return; }
+        console.warn('navigator.share failed', err);
+      }
+    }
+    // This browser cannot attach files: save the PDF and open the customer's chat to attach it by hand
+    Invoice.download(blob, inv.filename);
+    var num = normalizeWhatsAppNumber(c.mobile);
+    if(num.ok) openWhatsAppChat(num.number, billManualCaption(inv));
+    toast('This browser cannot attach files directly. PDF saved - in the chat tap Attach \u2192 Document.', 'warn');
+  }catch(err){
+    console.error('PDF share failed', err);
+    toast('Could not create the PDF: ' + (err.message || err), 'err');
   }
 }

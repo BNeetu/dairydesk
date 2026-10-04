@@ -236,6 +236,8 @@ function viewCustomer(id){
       '<button class="btn btn-primary" onclick="openBillModal(\'' + c.id + '\')">📄 View Billing</button>' +
       '<button class="btn btn-ghost" onclick="closeModal(\'viewCustModal\');goPage(\'billing\')">Go to Billing Page</button>' +
       '<button class="btn btn-ghost" onclick="openBackdatedModal(\'' + c.id + '\')">➕ Add Missed Deliveries</button>' +
+      '<button class="btn btn-ghost" onclick="openCustExtra(\'' + c.id + '\')">⏸️ Pause / Rates</button>' +
+      '<button class="btn btn-ghost" onclick="openPayModal(\'' + c.id + '\')">💰 Payment</button>' +
     '</div>' +
     (c.notes ? '<div style="background:#FEF3C7;border-radius:9px;padding:10px 12px;font-size:.82rem;color:#92400E;margin-bottom:14px">📝 ' + escapeHtml(c.notes) + '</div>' : '') +
     '<div style="font-size:.74rem;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Product Summary (All-Time)</div>' +

@@ -38,11 +38,15 @@ function persistLocalOnly(){
   localStorage.setItem('dd_theme', currentTheme);
 }
 
+var SHEETS_TOKEN = '';   // optional secret; must be EXACTLY the same as API_KEY in Code.gs (leave both empty to skip)
 function sheetRequest(action, payload){
   if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
   var params = new URLSearchParams();
   params.append('action', action);
-  params.append('payload', JSON.stringify(payload || {}));
+  // Code.gs checks the secret (API_KEY) inside the payload as "key"
+  var body = Object.assign({}, payload || {});
+  if(SHEETS_TOKEN) body.key = SHEETS_TOKEN;
+  params.append('payload', JSON.stringify(body));
   return fetch(SHEETS_API_URL, { method: 'POST', body: params })
     .then(function(res){
       if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets request failed'); });
@@ -58,7 +62,7 @@ function loadRemoteState(){
   if(!SHEETS_ENABLED) return Promise.reject(new Error('Google Sheets sync disabled'));
   var seqAtCall = _deliveryMutSeq;
   // Wait for any in-flight save first, so a load can never overwrite newer local changes
-  return _savePending.then(function(){ return fetch(SHEETS_API_URL + '?action=load&_=' + Date.now()); })
+  return _savePending.then(function(){ return fetch(SHEETS_API_URL + '?action=load&_=' + Date.now() + (SHEETS_TOKEN ? '&key=' + encodeURIComponent(SHEETS_TOKEN) : '')); })
     .then(function(res){
       if(!res.ok) return res.text().then(function(text){ throw new Error(text || 'Google Sheets load failed'); });
       return res.json();
